@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="pt-MZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Caderneta de Gastos</title>
+<meta name="description" content="Anote os seus gastos em meticais e veja para onde vai o dinheiro.">
+<meta name="theme-color" content="#0b6b53">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="appbar">
+  <h1 id="viewTitle">Lançar</h1>
+  <span class="appbar-sub num" id="appbarSub"></span>
+</header>
+
+<main>
+  <!-- LANÇAR -->
+  <section class="view view-launch" id="v-lancar" hidden>
+    <div class="seg" role="group" aria-label="Tipo de lançamento">
+      <button type="button" id="typeOut" class="out" aria-pressed="true">Gasto</button>
+      <button type="button" id="typeIn" class="in" aria-pressed="false">Entrada</button>
+    </div>
+
+    <div class="display" id="display" aria-live="polite">
+      <div class="expr num" id="expr">&nbsp;</div>
+      <div class="total"><span class="num" id="total">0</span> <span class="cur">MT</span></div>
+      <div class="hint" id="hint">Digite o valor e toque na categoria</div>
+    </div>
+
+    <details class="more" id="more">
+      <summary><span id="moreSummary">Dinheiro · hoje</span><span class="more-cta">Mais detalhes</span></summary>
+      <div class="more-body">
+        <div class="chips" id="payChips" role="group" aria-label="Forma de pagamento"></div>
+        <div class="row2">
+          <label class="field"><span>Nota (opcional)</span><input id="note" maxlength="60" autocomplete="off" placeholder="Ex.: pão e leite"></label>
+          <label class="field"><span>Data</span><input id="date" type="date"></label>
+        </div>
+      </div>
+    </details>
+
+    <div class="cats" id="catGrid" aria-label="Categorias"></div>
+
+    <div class="keypad" id="keypad">
+      <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button><button type="button" data-k="back" class="fn" aria-label="Apagar último dígito">⌫</button>
+      <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button><button type="button" data-k="+" class="fn plus" aria-label="Somar outro valor">+</button>
+      <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button><button type="button" data-k="clear" class="fn" aria-label="Limpar">C</button>
+      <button type="button" data-k="000">000</button><button type="button" data-k="0" class="wide">0</button><button type="button" data-k=",">,</button>
+    </div>
+  </section>
+
+  <!-- RESUMO -->
+  <section class="view" id="v-resumo" hidden>
+    <div class="monthnav">
+      <button type="button" class="mbtn" data-mdelta="-1" aria-label="Mês anterior">‹</button>
+      <strong class="mlabel"></strong>
+      <button type="button" class="mbtn" data-mdelta="1" aria-label="Mês seguinte">›</button>
+    </div>
+    <div id="backupNag"></div>
+    <div id="resumoBody" class="stack"></div>
+  </section>
+
+  <!-- HISTÓRICO -->
+  <section class="view" id="v-historico" hidden>
+    <div class="monthnav">
+      <button type="button" class="mbtn" data-mdelta="-1" aria-label="Mês anterior">‹</button>
+      <strong class="mlabel"></strong>
+      <button type="button" class="mbtn" data-mdelta="1" aria-label="Mês seguinte">›</button>
+    </div>
+    <div class="chips scroll" id="histFilter"></div>
+    <div id="histList"></div>
+  </section>
+
+  <!-- AJUSTES -->
+  <section class="view" id="v-ajustes" hidden>
+    <div class="stack" id="ajustesBody"></div>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="Secções">
+  <a href="#lancar" data-tab="lancar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Lançar</span></a>
+  <a href="#resumo" data-tab="resumo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg><span>Resumo</span></a>
+  <a href="#historico" data-tab="historico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg><span>Histórico</span></a>
+  <a href="#ajustes" data-tab="ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>Ajustes</span></a>
+</nav>
+
+<dialog id="editDlg" aria-labelledby="editTitle">
+  <form method="dialog" id="editForm" novalidate>
+    <h2 id="editTitle">Editar lançamento</h2>
+    <label class="field"><span>Valor (MT)</span><input id="eValue" inputmode="decimal" autocomplete="off"></label>
+    <label class="field"><span>Categoria</span><select id="eCat"></select></label>
+    <div class="row2">
+      <label class="field"><span>Pagamento</span><select id="ePay"></select></label>
+      <label class="field"><span>Data</span><input id="eDate" type="date"></label>
+    </div>
+    <label class="field"><span>Nota</span><input id="eNote" maxlength="60" autocomplete="off"></label>
+    <p class="err" id="eErr" role="alert"></p>
+    <div class="dlg-actions">
+      <button type="button" class="btn danger-outline" id="eDelete">Apagar</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="eCancel">Fechar</button>
+      <button type="submit" class="btn primary" id="eSave">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button type="button" id="toastAction" hidden></button></div>
+
+<script src="app.js"></script>
+</body>
+</html>

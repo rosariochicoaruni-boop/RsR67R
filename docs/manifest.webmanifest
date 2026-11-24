@@ -1,0 +1,17 @@
+{
+  "name": "Caderneta de Gastos",
+  "short_name": "Caderneta",
+  "description": "Anote os seus gastos em meticais e veja para onde vai o dinheiro.",
+  "lang": "pt-MZ",
+  "start_url": "./#lancar",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f4f2",
+  "theme_color": "#0b6b53",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
