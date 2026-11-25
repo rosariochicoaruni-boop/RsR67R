@@ -23,24 +23,31 @@
     cafe: '<path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8zM17 9.5h1.5a2.5 2.5 0 0 1 0 5H17M7 3.5v2M10.5 3.5v2M14 3.5v2"/>',
     roupa: '<path d="M8.5 3.5L4 6l1.8 4 2-.8V20.5h8.4V9.2l2 .8L20 6l-4.5-2.5a3.5 3.5 0 0 1-7 0z"/>',
     igreja: '<path d="M12 2.5v5M9.5 5h5M5.5 21v-8L12 8l6.5 5v8z"/><path d="M10 21v-4h4v4"/>',
-    // ícones da interface
+    // carteiras e interface
+    cash: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/>',
+    phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10 6h4M11 18h2"/><path d="M9.5 12.5l2 2 3-3.5"/>',
+    bank: '<path d="M3 9.5L12 4l9 5.5M4.5 9.5h15M6 9.5v8M10 9.5v8M14 9.5v8M18 9.5v8M3.5 20h17"/>',
+    transfer: '<path d="M5 8h13l-3.5-3.5M19 16H6l3.5 3.5"/>',
+    target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+    repeat: '<path d="M4 11V9a3 3 0 0 1 3-3h12l-3-3M20 13v2a3 3 0 0 1-3 3H5l3 3"/>',
+    piggy: '<path d="M5 11a6 5 0 0 1 6-5h3a6 5 0 0 1 5.5 3.2L21 9v4l-1.6.6A6 5 0 0 1 16 16.5V19h-2.5v-2H10v2H7.5v-3A5 5 0 0 1 5 11z"/><path d="M5 11H3.5M10 6.5l.5-2.5 2.5 2"/><circle cx="15.5" cy="10.5" r=".6"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
-    minus: '<path d="M5 12h14"/>',
     list: '<path d="M8 6.5h12M8 12h12M8 17.5h12M4 6.5h.01M4 12h.01M4 17.5h.01"/>',
     shield: '<path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2 2 4-4"/>',
     doc: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M3.5 10h17M7.5 14.5h4"/>',
-    coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.3c-.5-1-1.6-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.8 5.7 1.6 5.7 4.4 0 1.2-1.2 2.1-2.9 2.1-1.3 0-2.4-.6-2.9-1.6M12 6.2v1.5M12 16.3v1.5"/>'
+    coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.3c-.5-1-1.6-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.8 5.7 1.6 5.7 4.4 0 1.2-1.2 2.1-2.9 2.1-1.3 0-2.4-.6-2.9-1.6M12 6.2v1.5M12 16.3v1.5"/>',
+    bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'
   };
   const CAT_ICON_CHOICES = ["alim", "merc", "transp", "casa", "energ", "cred", "saude", "famil", "lazer", "cafe", "roupa", "book", "igreja", "gift", "salario", "negocio", "outent", "outros", "tag"];
-  const svg = (name, extra = "") => {
+  const svg = (name) => {
     const s = document.createElement("span");
-    s.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" ${extra}>${ICONS[name] || ICONS.tag}</svg>`;
+    s.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.tag}</svg>`;
     return s.firstChild;
   };
 
   // ================= Dados base =================
   const KEY = "caderneta:v1";
-  const PAYS = ["Dinheiro", "M-Pesa", "e-Mola", "mKesh", "Banco"];
   const DEFAULT_CATS = {
     out: [
       ["alim", "Alimentação", "#ff9f5a"], ["merc", "Mercado", "#4fd1a1"], ["transp", "Transporte", "#a58bff"],
@@ -49,23 +56,36 @@
     ],
     in: [["salario", "Salário", "#5fe3a1"], ["negocio", "Negócio / biscate", "#9be36f"], ["outent", "Outras entradas", "#7fd8c0"]]
   };
+  const DEFAULT_WALLETS = [
+    ["dinheiro", "Dinheiro", "cash", true], ["mpesa", "M-Pesa", "phone", true], ["emola", "e-Mola", "phone", true],
+    ["mkesh", "mKesh", "phone", false], ["banco", "Banco", "bank", false]
+  ];
+  const OLD_COLORS = { alim: "#d9752a", merc: "#2f9568", transp: "#7259c4", casa: "#4874a6", energ: "#b8941c", cred: "#2f93aa", saude: "#c9404f", famil: "#a85f22", lazer: "#984a8c", outros: "#7d8a85", salario: "#187a49", negocio: "#36985f", outent: "#5fae82" };
 
   function freshData() {
     const cats = {};
     for (const t of ["out", "in"]) cats[t] = DEFAULT_CATS[t].map(([id, name, color]) => ({ id, name, color, icon: id }));
-    return { version: 1, entries: [], cats, settings: { saveGoal: 0, lastBackup: 0 } };
+    return migrate({ version: 1, entries: [], cats, settings: { saveGoal: 0, lastBackup: 0 } });
   }
   function isValidData(d) {
     return d && d.version === 1 && Array.isArray(d.entries) && d.cats && Array.isArray(d.cats.out) && Array.isArray(d.cats.in) && d.settings;
   }
-  // Dados da versão 1.0: as categorias ainda não tinham ícone.
-  const OLD_COLORS = { alim: "#d9752a", merc: "#2f9568", transp: "#7259c4", casa: "#4874a6", energ: "#b8941c", cred: "#2f93aa", saude: "#c9404f", famil: "#a85f22", lazer: "#984a8c", outros: "#7d8a85", salario: "#187a49", negocio: "#36985f", outent: "#5fae82" };
+  // Atualiza dados de versões anteriores sem perder nada.
   function migrate(d) {
     const newColor = {}; for (const t of ["out", "in"]) for (const [id, , color] of DEFAULT_CATS[t]) newColor[id] = color;
     for (const t of ["out", "in"]) for (const c of d.cats[t]) {
       if (!c.icon) c.icon = ICONS[c.id] ? c.id : "tag";
-      // cores antigas (tema claro) passam para as do tema azul, se não foram mudadas
       if (OLD_COLORS[c.id] && c.color === OLD_COLORS[c.id]) c.color = newColor[c.id];
+    }
+    const s = d.settings;
+    if (!Array.isArray(s.wallets)) s.wallets = DEFAULT_WALLETS.map(([id, name, icon, show]) => ({ id, name, icon, show, adj: 0 }));
+    if (!s.reminder) s.reminder = { on: false, h: 20, m: 0 };
+    if (!Array.isArray(d.fixed)) d.fixed = [];
+    if (!Array.isArray(d.goals)) d.goals = [];
+    // versão 1.0/1.1: forma de pagamento em texto -> carteira
+    for (const e of d.entries) {
+      if (!e.w) { const w = s.wallets.find((x) => x.name === e.pay); e.w = w ? w.id : "dinheiro"; }
+      delete e.pay;
     }
     return d;
   }
@@ -79,6 +99,7 @@
     try { localStorage.setItem(KEY, JSON.stringify(data)); }
     catch (e) { toast("Não foi possível guardar. O armazenamento do telemóvel pode estar cheio."); }
     if (!persistAsked && navigator.storage && navigator.storage.persist) { persistAsked = true; navigator.storage.persist().catch(() => {}); }
+    tellAndroidLastEntry();
   }
 
   // ================= Utilidades =================
@@ -100,11 +121,13 @@
   const today = () => isoOf(new Date());
   const monthOf = (iso) => iso.slice(0, 7);
   const shiftMonth = (m, k) => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 1 + k, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+  const monthsBetween = (a, b) => { const [y1, m1] = a.split("-").map(Number), [y2, m2] = b.split("-").map(Number); return (y2 - y1) * 12 + (m2 - m1); };
   const daysIn = (m) => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo, 0).getDate(); };
   const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
   const MONTHS_S = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   const WEEKDAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
   const monthName = (m) => { const [y, mo] = m.split("-").map(Number); const s = MONTHS[mo - 1]; return s[0].toUpperCase() + s.slice(1) + " de " + y; };
+  const monthShort = (m) => { const [y, mo] = m.split("-").map(Number); return `${MONTHS_S[mo - 1]} ${y}`; };
   const dayName = (iso) => {
     const [y, mo, d] = iso.split("-").map(Number);
     if (iso === today()) return "Hoje";
@@ -116,7 +139,6 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const timeOf = (ts) => { if (!ts) return ""; const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
-  // Formato moçambicano: 1 250,50 MT (sem casas decimais quando o valor é inteiro)
   function fmtNum(cents) {
     const neg = cents < 0; cents = Math.abs(Math.round(cents));
     const int = Math.floor(cents / 100), dec = cents % 100;
@@ -124,46 +146,150 @@
     return (neg ? "−" : "") + s + (dec ? "," + pad(dec) : "");
   }
   const fmt = (cents) => fmtNum(cents) + " MT";
-  // Valor com as casas decimais e "MT" esbatidos, como no saldo grande
-  function moneyEl(cents, sign = "") {
+  const fmtPlain = (cents) => fmtNum(cents).replace(/ /g, "").replace("−", "-");
+  function moneyEl(cents) {
     const neg = cents < 0; const abs = Math.abs(Math.round(cents));
     const int = Math.floor(abs / 100), dec = abs % 100;
     const s = String(int).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-    return el("span", { class: "money num" }, (neg ? "−" : sign) + s, dec ? el("span", { class: "dec", text: "," + pad(dec) }) : null, el("span", { class: "cur", text: "MT" }));
+    return el("span", { class: "money num" }, (neg ? "−" : "") + s, dec ? el("span", { class: "dec", text: "," + pad(dec) }) : null, el("span", { class: "cur", text: "MT" }));
   }
-
-  function parseMoney(s) {
+  function parseMoney(s, allowZero = false) {
     s = String(s).trim().replace(/[\s ]|MT|MZN/gi, "");
     if (!s) return null;
     if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
     else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, "");
     const v = Number(s);
-    if (!isFinite(v) || v <= 0) return null;
+    if (!isFinite(v) || v < 0 || (!allowZero && v === 0)) return null;
     return Math.round(v * 100);
   }
 
   const catList = (type) => data.cats[type];
-  const catById = (type, id) => catList(type).find((c) => c.id === id) || { id, name: "Sem categoria", color: "#9aa6c8", icon: "tag" };
+  const catById = (type, id) => (catList(type) || []).find((c) => c.id === id) || { id, name: "Sem categoria", color: "#9aa6c8", icon: "tag" };
   const sum = (list) => list.reduce((a, e) => a + e.v, 0);
   const inMonth = (m) => data.entries.filter((e) => monthOf(e.d) === m);
+  const wallets = () => data.settings.wallets;
+  const walletById = (id) => wallets().find((w) => w.id === id) || { id, name: "Carteira", icon: "cash", show: true, adj: 0 };
+  const usedWallets = () => { const used = new Set(data.entries.flatMap((e) => [e.w, e.w2])); return wallets().filter((w) => w.show || used.has(w.id)); };
+  const goalById = (id) => data.goals.find((g) => g.id === id) || { id, name: "Meta apagada", target: 0 };
 
-  function catIcon(c, cls = "tx-ic") {
-    return el("span", { class: cls }, svg(c.icon), el("i", { style: `background:${c.color}` }));
+  function walletBalance(id) {
+    const w = walletById(id);
+    let b = w.adj || 0;
+    for (const e of data.entries) {
+      if (e.t === "in" && e.w === id) b += e.v;
+      else if (e.t === "out" && e.w === id) b -= e.v;
+      else if (e.t === "tr") { if (e.w === id) b -= e.v; if (e.w2 === id) b += e.v; }
+      else if (e.t === "goal" && e.w === id) b -= e.v;
+    }
+    return b;
+  }
+  const goalSaved = (id) => data.entries.filter((e) => e.t === "goal" && e.g === id).reduce((a, e) => a + e.v, 0);
+  const catSpent = (id, m) => inMonth(m).filter((e) => e.t === "out" && e.cat === id).reduce((a, e) => a + e.v, 0);
+
+  // Como mostrar qualquer lançamento (gasto, entrada, transferência, meta)
+  function entryInfo(e) {
+    if (e.t === "tr") return { title: e.note || "Transferência", sub: `${walletById(e.w).name} → ${walletById(e.w2).name}`, icon: "transfer", color: "#4f86ff", amount: fmt(e.v), cls: "" };
+    if (e.t === "goal") {
+      const g = goalById(e.g);
+      return { title: e.v >= 0 ? `Guardado: ${g.name}` : `Retirado: ${g.name}`, sub: walletById(e.w).name, icon: "piggy", color: "#ffd25a", amount: (e.v >= 0 ? "→ " : "← ") + fmt(Math.abs(e.v)), cls: "" };
+    }
+    const c = catById(e.t, e.cat);
+    return { title: e.note || c.name, sub: (e.note ? c.name + " · " : "") + walletById(e.w).name, icon: c.icon, color: c.color, amount: (e.t === "in" ? "+" : "−") + fmt(e.v), cls: e.t === "in" ? " in" : "" };
+  }
+  function iconTile(icon, color) { return el("span", { class: "tx-ic" }, svg(icon), color ? el("i", { style: `background:${color}` }) : null); }
+
+  // ================= Ponte com o APK =================
+  const android = window.CadernetaAndroid || null;
+  function tellAndroidLastEntry() {
+    if (!android || !android.ultimoLancamento) return;
+    let last = "";
+    for (const e of data.entries) if (e.d > last) last = e.d;
+    try { android.ultimoLancamento(last); } catch (e) { /* ignorar */ }
+  }
+  function androidReminderState() {
+    if (!android || !android.estadoLembrete) return null;
+    try { return JSON.parse(android.estadoLembrete()); } catch (e) { return null; }
   }
 
   // ================= Aviso (toast) =================
   let toastTimer;
-  function toast(text, action) {
+  function toast(text, action, ms) {
     $("toastText").textContent = text;
     const b = $("toastAction");
     if (action) { b.textContent = action[0]; b.onclick = () => { action[1](); $("toast").hidden = true; }; b.hidden = false; }
     else b.hidden = true;
     $("toast").hidden = false;
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => ($("toast").hidden = true), action ? 5000 : 2600);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => ($("toast").hidden = true), ms || (action ? 5000 : 2800));
   }
 
+  // ================= Formulário genérico (diálogo) =================
+  let formState = null;
+  function openForm({ title, intro, fields, submit = "Guardar", onSubmit, onDelete, deleteLabel = "Apagar" }) {
+    $("formTitle").textContent = title;
+    $("formIntro").hidden = !intro; $("formIntro").textContent = intro || "";
+    $("formErr").textContent = "";
+    const box = $("formFields"); box.replaceChildren();
+    const inputs = {};
+    let row = null;
+    for (const f of fields) {
+      let input;
+      if (f.type === "select") {
+        input = el("select", { id: "f_" + f.id });
+        for (const [v, label] of f.options) input.append(el("option", { value: v, text: label }));
+        if (f.value != null) input.value = f.value;
+      } else if (f.type === "seg") {
+        input = el("div", { class: "seg-inline", role: "group" });
+        input.value = f.value;
+        for (const [v, label] of f.options) {
+          const b = el("button", { type: "button", "aria-pressed": String(f.value === v), text: label });
+          b.onclick = () => { input.value = v; input.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); if (f.onChange) f.onChange(v, inputs); };
+          input.append(b);
+        }
+      } else {
+        const attrs = { id: "f_" + f.id, autocomplete: "off" };
+        if (f.type === "money") Object.assign(attrs, { inputmode: "decimal", placeholder: f.placeholder || "0" });
+        else if (f.type === "date") attrs.type = "date";
+        else if (f.type === "month") attrs.type = "month";
+        else if (f.type === "number") Object.assign(attrs, { type: "number", inputmode: "numeric", min: f.min, max: f.max });
+        else Object.assign(attrs, { maxlength: f.maxlength || 40, placeholder: f.placeholder || "" });
+        input = el("input", attrs);
+        if (f.value != null) input.value = f.value;
+        if (f.max && f.type === "date") input.max = f.max;
+      }
+      inputs[f.id] = input;
+      const field = el("label", { class: "field" }, el("span", { text: f.label }), input);
+      if (f.half) {
+        if (!row) { row = el("div", { class: "row2" }); box.append(row); }
+        row.append(field); if (row.children.length === 2) row = null;
+      } else { row = null; box.append(field); }
+      if (f.hidden) field.hidden = true;
+      input._field = field;
+    }
+    for (const f of fields) if (f.onChange && f.type === "seg") f.onChange(f.value, inputs);
+    const del = $("formDelete"); let armed = false;
+    del.hidden = !onDelete; del.textContent = deleteLabel; del.className = "btn danger-outline";
+    del.onclick = () => {
+      if (!armed) { armed = true; del.textContent = "Confirmar: " + deleteLabel.toLowerCase(); del.className = "btn danger"; return; }
+      $("formDlg").close(); onDelete();
+    };
+    $("formSubmit").textContent = submit;
+    formState = { inputs, onSubmit };
+    $("formDlg").showModal();
+    const first = Object.values(inputs).find((i) => i.tagName === "INPUT" && !i._field.hidden);
+    if (first && first.inputMode === "decimal" && !first.value) setTimeout(() => first.focus(), 50);
+  }
+  $("formCancel").onclick = () => $("formDlg").close();
+  $("formForm").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    if (!formState) return;
+    const vals = {}; for (const [k, i] of Object.entries(formState.inputs)) vals[k] = i.value;
+    const err = formState.onSubmit(vals, formState.inputs);
+    if (err) { $("formErr").textContent = err; return; }
+    $("formDlg").close();
+  });
+
   // ================= Navegação =================
-  const VIEWS = ["lancar", "resumo", "historico", "ajustes"];
+  const VIEWS = ["lancar", "resumo", "carteira", "historico", "ajustes"];
   let view = "lancar";
   let viewMonth = monthOf(today());
   function route() {
@@ -181,13 +307,13 @@
     document.querySelectorAll(".mlabel").forEach((n) => (n.textContent = monthName(viewMonth)));
     if (view === "lancar") renderLaunch();
     else if (view === "resumo") renderResumo();
+    else if (view === "carteira") renderCarteira();
     else if (view === "historico") renderHist();
     else renderAjustes();
   }
 
   // ================= Lançar =================
-  const launch = { type: "out", expr: "", pay: "Dinheiro" };
-
+  const launch = { type: "out", expr: "", w: "dinheiro" };
   function termsOf(expr) { return expr.split("+").filter((s) => s !== ""); }
   function termCents(t) { const v = parseMoney(t.endsWith(",") ? t.slice(0, -1) : t); return v || 0; }
   function exprTotal() { return termsOf(launch.expr).reduce((a, t) => a + termCents(t), 0); }
@@ -224,35 +350,38 @@
     const d = $("display"); d.classList.toggle("in", launch.type === "in");
     if (!d.classList.contains("shake")) $("hint").textContent = total ? `Toque na categoria para guardar ${launch.type === "out" ? "o gasto" : "a entrada"}` : "Digite o valor e toque na categoria";
   }
-
   function setLaunchType(t) {
     launch.type = t;
     $("typeOut").setAttribute("aria-pressed", String(t === "out"));
     $("typeIn").setAttribute("aria-pressed", String(t === "in"));
     renderLaunch();
   }
-
-  function greeting() {
-    const h = new Date().getHours();
-    return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
-  }
+  const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"; };
 
   function renderLaunch() {
     $("greeting").textContent = greeting();
-    const spentToday = sum(data.entries.filter((e) => e.t === "out" && e.d === today()));
-    $("todayAmount").replaceChildren(moneyEl(spentToday));
+    $("todayAmount").replaceChildren(moneyEl(sum(data.entries.filter((e) => e.t === "out" && e.d === today()))));
+
+    // aviso de pagamentos fixos por confirmar
+    const due = fixedDue();
+    const nb = $("launchNotice"); nb.replaceChildren();
+    if (due.length) nb.append(el("a", { class: "notice", href: "#carteira" },
+      el("span", {}, el("b", { text: `${due.length} pagamento${due.length > 1 ? "s" : ""} fixo${due.length > 1 ? "s" : ""}` }), ` por confirmar · ${fmt(due.reduce((a, f) => a + f.v, 0))}`),
+      el("span", { class: "link", text: "Ver" })));
 
     const grid = $("catGrid"); grid.replaceChildren();
     const cats = catList(launch.type);
     grid.classList.toggle("few", cats.length <= 6);
     for (const c of cats) grid.append(el("button", { type: "button", class: "action", onclick: () => commit(c) }, svg(c.icon), el("span", { text: c.name })));
 
+    const ws = usedWallets();
+    if (!ws.some((w) => w.id === launch.w)) launch.w = ws[0] ? ws[0].id : "dinheiro";
     const pc = $("payChips"); pc.replaceChildren();
-    for (const p of PAYS) pc.append(el("button", { type: "button", class: "chip", "aria-pressed": String(launch.pay === p), onclick: () => { launch.pay = p; renderLaunch(); } }, p));
+    for (const w of ws) pc.append(el("button", { type: "button", class: "chip", "aria-pressed": String(launch.w === w.id), onclick: () => { launch.w = w.id; renderLaunch(); } }, w.name));
     if (!$("date").value) $("date").value = today();
     $("date").max = today();
     const d = $("date").value;
-    $("moreSummary").textContent = `${launch.pay} · ${d === today() ? "hoje" : dayName(d).toLowerCase()}${$("note").value ? " · " + $("note").value : ""}`;
+    $("moreSummary").textContent = `${walletById(launch.w).name} · ${d === today() ? "hoje" : dayName(d).toLowerCase()}${$("note").value ? " · " + $("note").value : ""}`;
     renderDisplay();
   }
 
@@ -262,16 +391,28 @@
     setTimeout(() => { d.classList.remove("shake"); renderDisplay(); }, 1600);
   }
 
+  function limitWarning(cat, m, before) {
+    if (!cat.limit) return "";
+    const after = catSpent(cat.id, m);
+    if (before < cat.limit && after >= cat.limit) return `Atenção: passou o limite de ${cat.name} (${fmt(cat.limit)}).`;
+    if (before < cat.limit * 0.8 && after >= cat.limit * 0.8) return `Atenção: ${cat.name} já vai em ${Math.round(after / cat.limit * 100)}% do limite.`;
+    return "";
+  }
+
   function commit(cat) {
     const v = exprTotal();
     if (!v) { shakeDisplay("Primeiro digite o valor"); return; }
     const d = $("date").value || today();
-    const entry = { id: uid(), t: launch.type, v, cat: cat.id, pay: launch.pay, note: $("note").value.trim(), d, ts: Date.now() };
+    const before = launch.type === "out" ? catSpent(cat.id, monthOf(d)) : 0;
+    const entry = { id: uid(), t: launch.type, v, cat: cat.id, w: launch.w, note: $("note").value.trim(), d, ts: Date.now() };
     data.entries.push(entry); save();
-    launch.expr = ""; $("note").value = ""; $("date").value = today(); launch.pay = "Dinheiro"; $("more").open = false;
+    launch.expr = ""; $("note").value = ""; $("date").value = today(); launch.w = "dinheiro"; $("more").open = false;
     if (navigator.vibrate) navigator.vibrate(15);
     renderLaunch();
-    toast(`${fmt(v)} em ${cat.name}`, ["Desfazer", () => { data.entries = data.entries.filter((x) => x.id !== entry.id); save(); renderView(); toast("Lançamento desfeito"); }]);
+    const warn = launch.type === "out" ? limitWarning(cat, monthOf(d), before) : "";
+    const undo = ["Desfazer", () => { data.entries = data.entries.filter((x) => x.id !== entry.id); save(); renderView(); toast("Lançamento desfeito"); }];
+    if (warn) { if (navigator.vibrate) navigator.vibrate([30, 60, 30]); toast(`${fmt(v)} em ${cat.name}. ${warn}`, undo, 7000); }
+    else toast(`${fmt(v)} em ${cat.name}`, undo);
   }
 
   $("moreToggle").onclick = () => { $("more").open = !$("more").open; };
@@ -282,7 +423,7 @@
   $("note").addEventListener("input", renderLaunch);
   $("date").addEventListener("change", renderLaunch);
   document.addEventListener("keydown", (e) => {
-    if (view !== "lancar" || e.target.matches("input, select, textarea") || $("editDlg").open) return;
+    if (view !== "lancar" || e.target.matches("input, select, textarea") || $("formDlg").open) return;
     if (/^\d$/.test(e.key)) pressKey(e.key);
     else if (e.key === "," || e.key === ".") pressKey(",");
     else if (e.key === "+") pressKey("+");
@@ -292,6 +433,239 @@
     e.preventDefault();
   });
 
+  // ================= Pagamentos fixos =================
+  const fixedPaidEntry = (f, m) => data.entries.find((e) => e.fx === f.id && monthOf(e.d) === m);
+  function fixedDue() {
+    const m = monthOf(today()), dayNow = Number(today().slice(8));
+    return data.fixed.filter((f) => !fixedPaidEntry(f, m) && Math.min(f.day, daysIn(m)) <= dayNow);
+  }
+  function confirmFixed(f) {
+    const entry = { id: uid(), t: f.t, v: f.v, cat: f.cat, w: f.w, note: f.name, d: today(), ts: Date.now(), fx: f.id };
+    const before = f.t === "out" ? catSpent(f.cat, monthOf(entry.d)) : 0;
+    data.entries.push(entry); save(); renderView();
+    const warn = f.t === "out" ? limitWarning(catById("out", f.cat), monthOf(entry.d), before) : "";
+    toast(`${f.name}: ${fmt(f.v)} registado. ${warn}`.trim(), ["Desfazer", () => { data.entries = data.entries.filter((x) => x.id !== entry.id); save(); renderView(); }]);
+  }
+  function editFixed(f) {
+    const isNew = !f;
+    f = f || { t: "out", name: "", v: 0, cat: "casa", w: "dinheiro", day: 1 };
+    const catOpts = (t) => catList(t).map((c) => [c.id, c.name]);
+    openForm({
+      title: isNew ? "Novo pagamento fixo" : "Pagamento fixo",
+      intro: "Todos os meses, a partir do dia indicado, a Caderneta pede-lhe para confirmar este valor.",
+      fields: [
+        { id: "t", label: "Tipo", type: "seg", value: f.t, options: [["out", "Gasto"], ["in", "Entrada"]], onChange: (t, inputs) => {
+          const sel = inputs.cat; if (!sel) return; const cur = sel.value; sel.replaceChildren();
+          for (const [v, l] of catOpts(t)) sel.append(el("option", { value: v, text: l }));
+          if (catList(t).some((c) => c.id === cur)) sel.value = cur;
+        } },
+        { id: "name", label: "Nome", type: "text", value: f.name, placeholder: "Ex.: Renda, Credelec, Salário" },
+        { id: "v", label: "Valor (MT)", type: "money", value: f.v ? fmtPlain(f.v) : "", half: true },
+        { id: "day", label: "Dia do mês", type: "number", value: f.day, min: 1, max: 31, half: true },
+        { id: "cat", label: "Categoria", type: "select", options: catOpts(f.t), value: f.cat, half: true },
+        { id: "w", label: "Carteira", type: "select", options: usedWallets().map((w) => [w.id, w.name]), value: f.w, half: true }
+      ],
+      submit: isNew ? "Adicionar" : "Guardar",
+      onSubmit: (v) => {
+        const name = v.name.trim(); const val = parseMoney(v.v); const day = Math.round(Number(v.day));
+        if (!name) return "Dê um nome, por exemplo Renda.";
+        if (!val) return "Escreva o valor, por exemplo 4500.";
+        if (!(day >= 1 && day <= 31)) return "O dia tem de ser entre 1 e 31.";
+        const rec = { t: v.t, name, v: val, cat: v.cat, w: v.w, day };
+        if (isNew) data.fixed.push({ id: uid(), ...rec }); else Object.assign(f, rec);
+        save(); renderView(); toast(isNew ? "Pagamento fixo adicionado" : "Pagamento fixo atualizado");
+      },
+      onDelete: isNew ? null : () => { data.fixed = data.fixed.filter((x) => x.id !== f.id); save(); renderView(); toast("Pagamento fixo removido. Os lançamentos já feitos ficam."); }
+    });
+  }
+
+  // ================= Metas =================
+  function goalForecast(g) {
+    const saved = goalSaved(g.id), left = g.target - saved;
+    if (left <= 0) return { text: "Meta alcançada!", good: true };
+    const m = monthOf(today());
+    if (g.deadline) {
+      const n = monthsBetween(m, g.deadline) + 1;
+      if (n <= 0) return { text: `Prazo passou · faltam ${fmt(left)}`, bad: true };
+      return { text: `${fmt(Math.ceil(left / n / 100) * 100)} por mês até ${monthShort(g.deadline)}` };
+    }
+    // ao ritmo dos últimos 3 meses de depósitos nesta meta
+    const since = shiftMonth(m, -2) + "-01";
+    const rate = data.entries.filter((e) => e.t === "goal" && e.g === g.id && e.d >= since).reduce((a, e) => a + e.v, 0) / 3;
+    if (rate > 0) { const n = Math.ceil(left / rate); return { text: `Faltam ${fmt(left)} · ≈ ${n} ${n === 1 ? "mês" : "meses"} a este ritmo` }; }
+    return { text: `Faltam ${fmt(left)}` };
+  }
+  function editGoal(g) {
+    const isNew = !g;
+    g = g || { name: "", target: 0, deadline: "" };
+    openForm({
+      title: isNew ? "Nova meta" : "Meta",
+      intro: isNew ? "Dê um objetivo ao dinheiro que guarda: um telemóvel novo, a reserva de emergência, a escola dos filhos…" : null,
+      fields: [
+        { id: "name", label: "Nome da meta", type: "text", value: g.name, placeholder: "Ex.: Telemóvel novo" },
+        { id: "target", label: "Valor a juntar (MT)", type: "money", value: g.target ? fmtPlain(g.target) : "", half: true },
+        { id: "deadline", label: "Até (opcional)", type: "month", value: g.deadline || "", half: true }
+      ],
+      submit: isNew ? "Criar meta" : "Guardar",
+      onSubmit: (v) => {
+        const name = v.name.trim(), target = parseMoney(v.target);
+        if (!name) return "Dê um nome à meta.";
+        if (!target) return "Escreva quanto quer juntar, por exemplo 15000.";
+        const rec = { name, target, deadline: v.deadline || "" };
+        if (isNew) data.goals.push({ id: uid(), ...rec, created: today() }); else Object.assign(g, rec);
+        save(); renderView(); toast(isNew ? "Meta criada" : "Meta atualizada");
+      },
+      onDelete: isNew ? null : () => {
+        const back = goalSaved(g.id);
+        data.goals = data.goals.filter((x) => x.id !== g.id);
+        data.entries = data.entries.filter((e) => !(e.t === "goal" && e.g === g.id));
+        save(); renderView(); toast(back ? `Meta apagada. ${fmt(back)} voltaram às carteiras.` : "Meta apagada");
+      }
+    });
+  }
+  function moveGoal(g, withdraw = false) {
+    if (!data.goals.length) { editGoal(null); return; }
+    g = g || data.goals[0];
+    const ws = usedWallets();
+    // sugestão: o que sobrou este mês
+    const m = monthOf(today()); const l = inMonth(m);
+    const sobra = sum(l.filter((e) => e.t === "in")) - sum(l.filter((e) => e.t === "out")) - l.filter((e) => e.t === "goal").reduce((a, e) => a + e.v, 0);
+    openForm({
+      title: withdraw ? "Retirar da meta" : "Guardar na meta",
+      intro: withdraw ? "O valor volta para a carteira escolhida." : (sobra > 0 ? `Este mês ainda sobram ${fmt(sobra)} por guardar.` : "O valor sai da carteira e fica reservado para a meta."),
+      fields: [
+        { id: "g", label: "Meta", type: "select", options: data.goals.map((x) => [x.id, x.name]), value: g.id },
+        { id: "v", label: "Valor (MT)", type: "money", value: !withdraw && sobra > 0 ? fmtPlain(sobra) : "", half: true },
+        { id: "w", label: withdraw ? "Para a carteira" : "Da carteira", type: "select", options: ws.map((w) => [w.id, w.name]), value: ws.some((w) => w.id === "dinheiro") ? "dinheiro" : ws[0].id, half: true }
+      ],
+      submit: withdraw ? "Retirar" : "Guardar",
+      onSubmit: (v) => {
+        const val = parseMoney(v.v);
+        if (!val) return "Escreva o valor.";
+        if (withdraw && val > goalSaved(v.g)) return `Esta meta só tem ${fmt(goalSaved(v.g))}.`;
+        data.entries.push({ id: uid(), t: "goal", v: withdraw ? -val : val, g: v.g, w: v.w, d: today(), ts: Date.now(), note: "" });
+        save(); renderView();
+        const gg = goalById(v.g);
+        toast(withdraw ? `${fmt(val)} retirados de ${gg.name}` : (goalSaved(gg.id) >= gg.target ? `Parabéns! A meta ${gg.name} foi alcançada.` : `${fmt(val)} guardados em ${gg.name}`));
+      }
+    });
+  }
+
+  // ================= Carteiras =================
+  function transfer() {
+    const ws = usedWallets();
+    if (ws.length < 2) { toast("Ative mais uma carteira em Ajustes para transferir."); return; }
+    openForm({
+      title: "Transferir entre carteiras",
+      intro: "Ex.: levantar dinheiro do M-Pesa. Não conta como gasto nem como entrada.",
+      fields: [
+        { id: "w", label: "De", type: "select", options: ws.map((w) => [w.id, w.name]), value: ws.find((w) => w.id === "mpesa") ? "mpesa" : ws[0].id, half: true },
+        { id: "w2", label: "Para", type: "select", options: ws.map((w) => [w.id, w.name]), value: "dinheiro", half: true },
+        { id: "v", label: "Valor (MT)", type: "money", half: true },
+        { id: "d", label: "Data", type: "date", value: today(), max: today(), half: true },
+        { id: "note", label: "Nota (opcional)", type: "text", placeholder: "Ex.: levantamento no agente" }
+      ],
+      submit: "Transferir",
+      onSubmit: (v) => {
+        const val = parseMoney(v.v);
+        if (v.w === v.w2) return "Escolha duas carteiras diferentes.";
+        if (!val) return "Escreva o valor.";
+        data.entries.push({ id: uid(), t: "tr", v: val, w: v.w, w2: v.w2, d: v.d || today(), ts: Date.now(), note: v.note.trim() });
+        save(); renderView(); toast(`${fmt(val)}: ${walletById(v.w).name} → ${walletById(v.w2).name}`);
+      }
+    });
+  }
+  function adjustWallet(w) {
+    const cur = walletBalance(w.id);
+    openForm({
+      title: `Acertar saldo: ${w.name}`,
+      intro: `A Caderneta calcula ${fmt(cur)}. Se tem outro valor na mão ou no telemóvel, escreva o saldo real e ela acerta a diferença (sem contar como gasto).`,
+      fields: [{ id: "v", label: "Saldo real (MT)", type: "money", value: fmtPlain(cur), placeholder: "0" }],
+      submit: "Acertar",
+      onSubmit: (v) => {
+        const real = parseMoney(v.v, true);
+        if (real === null) return "Escreva o saldo, por exemplo 2500.";
+        w.adj = (w.adj || 0) + (real - cur); data.settings.walletsSet = true; save(); renderView(); toast(`Saldo de ${w.name}: ${fmt(real)}`);
+      }
+    });
+  }
+
+  function renderCarteira() {
+    const body = $("carteiraBody"); body.replaceChildren();
+    const ws = usedWallets();
+    const total = ws.reduce((a, w) => a + walletBalance(w.id), 0);
+    body.append(el("div", { class: "hero-total" }, el("span", { class: "hero-label", text: "Saldo total" }), el("div", { class: "hero-amount", style: "font-size:2.2rem" }, moneyEl(total))));
+
+    const row = el("div", { class: "wallet-row" });
+    ws.forEach((w, i) => {
+      const b = walletBalance(w.id);
+      row.append(el("button", { type: "button", class: "glass-card wallet-card" + (i % 3 === 1 ? " alt" : i % 3 === 2 ? " alt2" : ""), onclick: () => adjustWallet(w) },
+        el("div", { class: "wc-top" }, svg(w.icon), el("span", { class: "wc-hint", text: "Acertar" })),
+        el("div", {}, el("div", { class: "wc-name", text: w.name }), el("div", { class: "wc-bal num" + (b < 0 ? " neg" : ""), text: fmt(b) }))));
+    });
+    body.append(row);
+    if (!data.settings.walletsSet && data.entries.length) {
+      body.append(el("div", { class: "nag" },
+        el("span", { text: "Os saldos começam a contar só a partir dos lançamentos. Toque em cada carteira e escreva quanto tem hoje para ficarem certos." }),
+        el("button", { type: "button", class: "btn small", text: "Já está certo", onclick: () => { data.settings.walletsSet = true; save(); renderView(); } })));
+    }
+
+    body.append(el("div", { class: "controls" },
+      control("transfer", "Transferir", transfer),
+      control("piggy", "Guardar", () => moveGoal(null)),
+      control("repeat", "Novo fixo", () => editFixed(null)),
+      control("target", "Nova meta", () => editGoal(null))));
+
+    // Fixos
+    const m = monthOf(today()), dayNow = Number(today().slice(8));
+    const fxPanel = el("section", { class: "panel" });
+    const pending = data.fixed.filter((f) => !fixedPaidEntry(f, m));
+    fxPanel.append(el("h2", { class: "panel-title" }, el("span", { text: "Pagamentos fixos" }),
+      pending.length ? el("span", { class: "label", text: `Por confirmar: ${fmt(pending.filter((f) => f.t === "out").reduce((a, f) => a + f.v, 0))}` }) : null));
+    if (!data.fixed.length) fxPanel.append(el("p", { class: "muted", text: "Renda, Credelec, crédito, mensalidades, salário… Registe uma vez e confirme todos os meses com um toque." }),
+      el("button", { type: "button", class: "btn", text: "+ Adicionar pagamento fixo", onclick: () => editFixed(null) }));
+    else {
+      const wrap = el("div");
+      for (const f of data.fixed.slice().sort((a, b) => a.day - b.day)) {
+        const paid = fixedPaidEntry(f, m);
+        const c = catById(f.t, f.cat);
+        const dueNow = !paid && Math.min(f.day, daysIn(m)) <= dayNow;
+        wrap.append(el("div", { class: "fx" },
+          el("button", { type: "button", class: "fx-main", onclick: () => editFixed(f) }, iconTile(c.icon, c.color),
+            el("span", {}, el("div", { class: "t", text: f.name }), el("div", { class: "s", text: `Dia ${f.day} · ${walletById(f.w).name}${dueNow ? " · em atraso" : ""}` }))),
+          el("div", { class: "right" }, el("span", { class: "amt num" + (f.t === "in" ? " in" : ""), text: (f.t === "in" ? "+" : "") + fmt(f.v) }),
+            paid ? el("span", { class: "paid" }, svg("check"), f.t === "in" ? "Recebido" : "Pago")
+              : el("button", { type: "button", class: "btn small" + (dueNow ? " primary" : ""), text: "Confirmar", onclick: () => confirmFixed(f) }))));
+      }
+      fxPanel.append(wrap);
+    }
+    body.append(fxPanel);
+
+    // Metas
+    const gPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title" }, el("span", { text: "Metas" }),
+      data.goals.length ? el("span", { class: "label", text: `Guardado: ${fmt(data.goals.reduce((a, g) => a + goalSaved(g.id), 0))}` }) : null));
+    if (!data.goals.length) gPanel.append(el("p", { class: "muted", text: "Guardar com um objetivo motiva mais. Crie uma meta e vá guardando o que sobra." }),
+      el("button", { type: "button", class: "btn primary", text: "Criar a primeira meta", onclick: () => editGoal(null) }));
+    else {
+      const wrap = el("div");
+      for (const g of data.goals) {
+        const saved = goalSaved(g.id), p = g.target ? saved / g.target : 0, fc = goalForecast(g);
+        const shown = Math.min(100, Math.round(p * 100));
+        wrap.append(el("div", { class: "goal" },
+          el("div", { class: "goal-top" }, el("button", { type: "button", onclick: () => editGoal(g), text: g.name }), el("span", { class: "num" }, el("b", { text: fmtNum(saved) }), el("span", { class: "muted", text: " / " + fmt(g.target) }))),
+          el("div", { class: "meter-wrap", style: `--pill-pos:${shown < 20 ? "flex-start" : shown > 80 ? "flex-end" : "center"}` },
+            el("span", { class: "pill-pct", text: Math.round(p * 100) + "%" }),
+            el("div", { class: "meter" + (p >= 1 ? " full" : "") }, el("span", { style: `width:${shown}%` }))),
+          el("div", { class: "goal-actions" }, el("span", { class: "tile-note" + (fc.good ? " good" : fc.bad ? " bad" : ""), text: fc.text }),
+            el("span", { class: "btnrow" },
+              saved > 0 ? el("button", { type: "button", class: "btn small", text: "Retirar", onclick: () => moveGoal(g, true) }) : null,
+              el("button", { type: "button", class: "btn small primary", text: "Guardar", onclick: () => moveGoal(g) })))));
+      }
+      gPanel.append(wrap);
+    }
+    body.append(gPanel);
+  }
+
   // ================= Resumo =================
   function renderResumo() {
     const body = $("resumoBody"); body.replaceChildren();
@@ -299,9 +673,9 @@
     const list = inMonth(m);
     const outs = list.filter((e) => e.t === "out"), ins = list.filter((e) => e.t === "in");
     const S = sum(outs), E = sum(ins), G = data.settings.saveGoal || 0;
+    const toGoals = list.filter((e) => e.t === "goal").reduce((a, e) => a + e.v, 0);
     const left = E - S;
 
-    // Hoje / semana / mês
     if (isCur) {
       const t = today(), ws = weekStart();
       body.append(el("div", { class: "kpis" },
@@ -310,7 +684,6 @@
         kpi("Este mês", S)));
     }
 
-    // Cartão de vidro: sobra do mês
     const [y, mo] = m.split("-").map(Number);
     body.append(el("div", { class: "glass-card bank-card" },
       el("div", { class: "bank-top" }, el("span", { class: "bank-mark" }, svg("coin")), el("span", { class: "bank-month", text: `${MONTHS_S[mo - 1]} ${y}` })),
@@ -318,16 +691,22 @@
         el("div", { class: "bank-number" }, fmtNum(left), el("span", { class: "cur", text: "MT" }))),
       el("div", { class: "bank-bottom" },
         el("span", {}, "Entradas", el("b", { text: fmt(E) })),
+        toGoals ? el("span", { style: "text-align:center" }, "Em metas", el("b", { text: fmt(toGoals) })) : null,
         el("span", { style: "text-align:right" }, "Gastos", el("b", { text: fmt(S) })))));
 
-    // Ações rápidas
     body.append(el("div", { class: "controls" },
       control("plus", "Novo gasto", () => { setLaunchType("out"); location.hash = "#lancar"; }),
       control("outent", "Nova entrada", () => { setLaunchType("in"); location.hash = "#lancar"; }),
-      control("list", "Histórico", () => { location.hash = "#historico"; }),
+      control("piggy", "Guardar", () => moveGoal(null)),
       control("shield", "Cópia", doBackup)));
 
     renderBackupNag(body);
+    if (android && !data.settings.reminder.on && data.entries.length >= 3 && !data.settings.reminderNagDone) {
+      body.append(el("div", { class: "nag" }, el("span", { text: "Quer um lembrete à noite nos dias em que não anotar nada?" }),
+        el("span", { class: "btnrow" },
+          el("button", { type: "button", class: "btn small", text: "Agora não", onclick: () => { data.settings.reminderNagDone = true; save(); renderView(); } }),
+          el("button", { type: "button", class: "btn small primary", text: "Ativar", onclick: () => { setReminder(true); renderView(); } }))));
+    }
 
     if (!data.entries.length) {
       body.append(el("div", { class: "panel empty" },
@@ -337,7 +716,6 @@
       return;
     }
 
-    // Dois mosaicos: gasto do mês e poupança
     const tiles = el("div", { class: "tiles" });
     if (G && E) {
       const canSpend = Math.max(0, E - G);
@@ -360,35 +738,41 @@
     }
     body.append(tiles);
 
-    // Linha "extrato"
     body.append(el("a", { class: "row-card", href: "#historico" }, el("span", { class: "ic-box" }, svg("doc")), el("span", { class: "t", text: `Lançamentos de ${MONTHS[mo - 1]}` }), el("span", { class: "link", text: "Ver" })));
 
-    // Categorias
+    // Categorias (com limites)
     const prevM = shiftMonth(m, -1);
     const prev = inMonth(prevM).filter((e) => e.t === "out");
     const byCat = {}, byPrev = {};
     for (const e of outs) byCat[e.cat] = (byCat[e.cat] || 0) + e.v;
     for (const e of prev) byPrev[e.cat] = (byPrev[e.cat] || 0) + e.v;
+    for (const c of catList("out")) if (c.limit && !byCat[c.id]) byCat[c.id] = 0; // mostrar limites ainda sem gasto
     const rows = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-    const catPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Para onde foi o dinheiro" }));
-    if (!rows.length) catPanel.append(el("p", { class: "muted", text: "Nenhum gasto neste mês." }));
+    const catPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title" }, el("span", { text: "Para onde foi o dinheiro" }), el("a", { href: "#ajustes", text: "Limites" })));
+    if (!rows.length || !S && !rows.some(([id]) => catById("out", id).limit)) catPanel.append(el("p", { class: "muted", text: "Nenhum gasto neste mês." }));
     else {
-      const top = catById("out", rows[0][0]);
-      catPanel.append(el("p", { class: "muted", text: `${top.name} é o seu maior gasto: ${Math.round(rows[0][1] / S * 100)}% do mês.` }));
-      const max = rows[0][1];
+      if (S) { const top = catById("out", rows[0][0]); catPanel.append(el("p", { class: "muted", text: `${top.name} é o seu maior gasto: ${Math.round(rows[0][1] / S * 100)}% do mês.` })); }
+      const max = Math.max(1, rows[0][1]);
       const wrap = el("div");
       for (const [id, v] of rows) {
         const c = catById("out", id);
         const p = byPrev[id] || 0;
         let delta = null;
-        if (prev.length) {
+        if (prev.length && v) {
           if (!p) delta = el("span", { class: "up", text: "novo" });
           else { const ch = Math.round((v - p) / p * 100); delta = el("span", { class: ch > 0 ? "up" : ch < 0 ? "down" : "", text: ch === 0 ? "igual" : `${ch > 0 ? "▲" : "▼"} ${Math.abs(ch)}% vs ${MONTHS_S[Number(prevM.slice(5)) - 1]}` }); }
         }
-        wrap.append(el("div", { class: "tx" }, catIcon(c),
+        let barPct = v / max, barColor = c.color, limitLine = null;
+        if (c.limit) {
+          const lp = v / c.limit; barPct = Math.min(1, lp);
+          const st = lp >= 1 ? "over" : lp >= 0.8 ? "warn" : "";
+          if (st === "over") barColor = "var(--out)"; else if (st === "warn") barColor = "var(--warn)";
+          limitLine = el("div", { class: "limit-line " + st }, el("span", { text: `Limite ${fmt(c.limit)}` }), el("span", { text: lp >= 1 ? `passou ${fmt(v - c.limit)}` : `restam ${fmt(c.limit - v)}` }));
+        }
+        wrap.append(el("div", { class: "tx" }, iconTile(c.icon, c.color),
           el("div", {}, el("div", { class: "t", text: c.name }),
-            el("div", { class: "s" }, el("span", { text: `${Math.round(v / S * 100)}% do mês` }), delta ? el("span", { class: "dotsep" }, delta) : null),
-            el("div", { class: "bar" }, el("span", { style: `width:${(v / max * 100).toFixed(1)}%;background:${c.color}` }))),
+            el("div", { class: "s" }, el("span", { text: S ? `${Math.round(v / S * 100)}% do mês` : "sem gastos" }), delta ? el("span", { class: "dotsep" }, delta) : null),
+            el("div", { class: "bar" }, el("span", { style: `width:${(barPct * 100).toFixed(1)}%;background:${barColor}` })), limitLine),
           el("span", { class: "amt", text: fmt(v) })));
       }
       catPanel.append(wrap);
@@ -453,26 +837,32 @@
 
   // ================= Histórico =================
   let histFilter = null;
+  const filterKey = (e) => e.t === "tr" ? "tr" : e.t === "goal" ? "goal" : e.t + ":" + e.cat;
+  function filterLabel(key) {
+    if (key === "tr") return ["Transferências", "#4f86ff"];
+    if (key === "goal") return ["Metas", "#ffd25a"];
+    const [t, id] = key.split(":"); const c = catById(t, id); return [c.name, c.color];
+  }
   function renderHist() {
     const list = inMonth(viewMonth);
     const fbox = $("histFilter"); fbox.replaceChildren();
-    const used = [...new Set(list.map((e) => e.t + ":" + e.cat))];
+    const used = [...new Set(list.map(filterKey))];
     if (used.length > 1) {
       fbox.append(el("button", { type: "button", class: "chip", "aria-pressed": String(!histFilter), onclick: () => { histFilter = null; renderHist(); } }, "Todos"));
       for (const key of used) {
-        const [t, id] = key.split(":"); const c = catById(t, id);
+        const [name, color] = filterLabel(key);
         fbox.append(el("button", { type: "button", class: "chip", "aria-pressed": String(histFilter === key), onclick: () => { histFilter = histFilter === key ? null : key; renderHist(); } },
-          el("span", { style: `width:8px;height:8px;border-radius:50%;background:${c.color}` }), c.name));
+          el("span", { style: `width:8px;height:8px;border-radius:50%;background:${color}` }), name));
       }
     }
     const box = $("histList"); box.replaceChildren();
-    let items = histFilter ? list.filter((e) => e.t + ":" + e.cat === histFilter) : list;
+    let items = histFilter ? list.filter((e) => filterKey(e) === histFilter) : list;
     if (!items.length) {
       box.append(el("div", { class: "panel empty" }, el("strong", { text: "Nada em " + monthName(viewMonth) }),
         el("span", { text: "Os lançamentos que fizer aparecem aqui, agrupados por dia." })));
       return;
     }
-    if (histFilter) box.append(el("p", { class: "muted", text: `${items.length} lançamento${items.length > 1 ? "s" : ""} · total ${fmt(sum(items))}` }));
+    if (histFilter) box.append(el("p", { class: "muted", text: `${items.length} lançamento${items.length > 1 ? "s" : ""} · total ${fmt(Math.abs(sum(items)))}` }));
     items = items.slice().sort((a, b) => b.d.localeCompare(a.d) || b.ts - a.ts);
     const groups = new Map();
     for (const e of items) { if (!groups.has(e.d)) groups.set(e.d, []); groups.get(e.d).push(e); }
@@ -481,51 +871,71 @@
       const panel = el("section", { class: "panel" }, el("div", { class: "day-h" }, el("span", { text: dayName(d) }), el("span", { class: "num", text: dayOut ? fmt(dayOut) : "" })));
       const wrap = el("div");
       for (const e of g) {
-        const c = catById(e.t, e.cat);
-        wrap.append(el("button", { type: "button", class: "tx", onclick: () => openEdit(e.id) }, catIcon(c),
-          el("div", {}, el("div", { class: "t", text: e.note || c.name }),
-            el("div", { class: "s" }, e.ts && e.d === isoOf(new Date(e.ts)) ? el("span", { text: timeOf(e.ts) }) : null, el("span", { class: e.ts && e.d === isoOf(new Date(e.ts)) ? "dotsep" : "", text: (e.note ? c.name + " · " : "") + e.pay }))),
-          el("span", { class: "amt num" + (e.t === "in" ? " in" : ""), text: (e.t === "in" ? "+" : "−") + fmt(e.v) })));
+        const info = entryInfo(e);
+        const sameDay = e.ts && e.d === isoOf(new Date(e.ts));
+        wrap.append(el("button", { type: "button", class: "tx", onclick: () => editEntry(e) }, iconTile(info.icon, info.color),
+          el("div", {}, el("div", { class: "t", text: info.title }),
+            el("div", { class: "s" }, sameDay ? el("span", { text: timeOf(e.ts) }) : null, el("span", { class: sameDay ? "dotsep" : "", text: info.sub + (e.fx ? " · fixo" : "") }))),
+          el("span", { class: "amt num" + info.cls, text: info.amount })));
       }
       panel.append(wrap);
       box.append(panel);
     }
   }
 
-  // ================= Editar =================
-  let editId = null, delArmed = false;
-  function openEdit(id) {
-    const e = data.entries.find((x) => x.id === id); if (!e) return;
-    editId = id; delArmed = false;
-    $("editTitle").textContent = e.t === "out" ? "Editar gasto" : "Editar entrada";
-    $("eValue").value = fmtNum(e.v).replace(/ /g, "");
-    const sel = $("eCat"); sel.replaceChildren();
-    for (const c of catList(e.t)) sel.append(el("option", { value: c.id, text: c.name }));
-    if (!catList(e.t).some((c) => c.id === e.cat)) sel.append(el("option", { value: e.cat, text: "Sem categoria" }));
-    sel.value = e.cat;
-    const ps = $("ePay"); ps.replaceChildren(); for (const p of PAYS) ps.append(el("option", { value: p, text: p }));
-    ps.value = PAYS.includes(e.pay) ? e.pay : "Dinheiro";
-    $("eDate").value = e.d; $("eDate").max = today();
-    $("eNote").value = e.note || "";
-    $("eErr").textContent = ""; $("eDelete").textContent = "Apagar"; $("eDelete").className = "btn danger-outline";
-    $("editDlg").showModal();
+  function editEntry(e) {
+    const ws = usedWallets().map((w) => [w.id, w.name]);
+    if (!ws.some(([id]) => id === e.w)) ws.push([e.w, walletById(e.w).name]);
+    const del = () => {
+      data.entries = data.entries.filter((x) => x.id !== e.id); save(); renderView();
+      toast("Lançamento apagado", ["Desfazer", () => { data.entries.push(e); save(); renderView(); }]);
+    };
+    if (e.t === "tr" || e.t === "goal") {
+      openForm({
+        title: e.t === "tr" ? "Transferência" : (e.v >= 0 ? "Guardado na meta" : "Retirado da meta"),
+        intro: e.t === "tr" ? `${walletById(e.w).name} → ${walletById(e.w2).name}` : goalById(e.g).name,
+        fields: [{ id: "v", label: "Valor (MT)", type: "money", value: fmtPlain(Math.abs(e.v)), half: true }, { id: "d", label: "Data", type: "date", value: e.d, max: today(), half: true }],
+        onSubmit: (v) => { const val = parseMoney(v.v); if (!val) return "Escreva um valor maior que zero."; e.v = e.v < 0 ? -val : val; e.d = v.d || e.d; save(); renderView(); toast("Lançamento atualizado"); },
+        onDelete: del
+      });
+      return;
+    }
+    const cats = catList(e.t).map((c) => [c.id, c.name]);
+    if (!cats.some(([id]) => id === e.cat)) cats.push([e.cat, "Sem categoria"]);
+    openForm({
+      title: e.t === "out" ? "Editar gasto" : "Editar entrada",
+      fields: [
+        { id: "v", label: "Valor (MT)", type: "money", value: fmtPlain(e.v) },
+        { id: "cat", label: "Categoria", type: "select", options: cats, value: e.cat },
+        { id: "w", label: "Carteira", type: "select", options: ws, value: e.w, half: true },
+        { id: "d", label: "Data", type: "date", value: e.d, max: today(), half: true },
+        { id: "note", label: "Nota", type: "text", value: e.note || "", maxlength: 60 }
+      ],
+      onSubmit: (v) => {
+        const val = parseMoney(v.v);
+        if (!val) return "Escreva um valor maior que zero, por exemplo 350 ou 12,50.";
+        if (!v.d) return "Escolha a data.";
+        Object.assign(e, { v: val, cat: v.cat, w: v.w, d: v.d, note: v.note.trim() });
+        save(); renderView(); toast("Lançamento atualizado");
+      },
+      onDelete: del
+    });
   }
-  $("eCancel").onclick = () => $("editDlg").close();
-  $("editForm").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    const v = parseMoney($("eValue").value);
-    if (!v) { $("eErr").textContent = "Escreva um valor maior que zero, por exemplo 350 ou 12,50."; return; }
-    if (!$("eDate").value) { $("eErr").textContent = "Escolha a data."; return; }
-    const e = data.entries.find((x) => x.id === editId);
-    if (e) Object.assign(e, { v, cat: $("eCat").value, pay: $("ePay").value, d: $("eDate").value, note: $("eNote").value.trim() });
-    save(); $("editDlg").close(); renderView(); toast("Lançamento atualizado");
-  });
-  $("eDelete").onclick = () => {
-    if (!delArmed) { delArmed = true; $("eDelete").textContent = "Confirmar: apagar"; $("eDelete").className = "btn danger"; return; }
-    const removed = data.entries.find((x) => x.id === editId);
-    data.entries = data.entries.filter((x) => x.id !== editId); save();
-    $("editDlg").close(); renderView();
-    toast("Lançamento apagado", ["Desfazer", () => { data.entries.push(removed); save(); renderView(); }]);
+
+  // ================= Lembrete diário =================
+  function setReminder(on, h, m) {
+    const r = data.settings.reminder;
+    r.on = on; if (h != null) { r.h = h; r.m = m; }
+    data.settings.reminderNagDone = true;
+    save();
+    if (android && android.definirLembrete) {
+      try { android.definirLembrete(r.on, r.h, r.m); } catch (e) { /* ignorar */ }
+      if (on) toast(`Lembrete ativo: todos os dias às ${pad(r.h)}:${pad(r.m)}, se não tiver anotado nada.`);
+    }
+  }
+  window.__cadernetaPermissao = (granted) => {
+    if (!granted) { data.settings.reminder.on = false; save(); toast("Sem permissão de notificações o lembrete não pode aparecer. Pode ativá-la nas definições do Android."); }
+    if (view === "ajustes" || view === "resumo") renderView();
   };
 
   // ================= Ajustes =================
@@ -539,7 +949,8 @@
       el("p", { class: "muted", text: "Adicione a Caderneta ao ecrã principal para abrir como um app, mesmo sem internet." }),
       el("button", { type: "button", class: "btn primary", text: "Instalar app", onclick: async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; renderAjustes(); } })));
 
-    const goalIn = el("input", { id: "goalInput", inputmode: "decimal", autocomplete: "off", placeholder: "Ex.: 3 000", value: data.settings.saveGoal ? fmtNum(data.settings.saveGoal).replace(/ /g, "") : "" });
+    // Meta mensal
+    const goalIn = el("input", { id: "goalInput", inputmode: "decimal", autocomplete: "off", placeholder: "Ex.: 3 000", value: data.settings.saveGoal ? fmtPlain(data.settings.saveGoal) : "" });
     const goalErr = el("p", { class: "err" });
     const saveGoal = () => {
       const raw = goalIn.value.trim();
@@ -548,12 +959,40 @@
       data.settings.saveGoal = v; save(); goalErr.textContent = ""; toast(v ? `Meta definida: guardar ${fmt(v)} por mês` : "Meta removida");
     };
     goalIn.addEventListener("keydown", (e) => { if (e.key === "Enter") saveGoal(); });
-    body.append(el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Meta de poupança" }),
-      el("p", { class: "muted", text: "Quanto quer guardar por mês? O resumo mostra quanto ainda pode gastar para cumprir a meta." }),
+    body.append(el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Poupança mensal" }),
+      el("p", { class: "muted", text: "Quanto quer guardar por mês? O resumo mostra quanto ainda pode gastar para cumprir." }),
       el("div", { class: "setrow" }, goalIn, el("button", { type: "button", class: "btn primary", text: "Guardar", onclick: saveGoal })), goalErr));
+
+    // Lembrete
+    const rem = data.settings.reminder;
+    const remPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Lembrete diário" }));
+    if (android && android.definirLembrete) {
+      const st = androidReminderState();
+      if (st) { rem.on = !!st.ativo && st.permitido !== false; rem.h = st.hora; rem.m = st.minuto; }
+      const sw = el("input", { type: "checkbox", id: "remOn", "aria-label": "Ativar lembrete diário" }); sw.checked = rem.on;
+      const time = el("input", { type: "time", id: "remTime", value: `${pad(rem.h)}:${pad(rem.m)}`, style: "max-width:130px" });
+      sw.onchange = () => { const [h, m] = time.value.split(":").map(Number); setReminder(sw.checked, h, m); };
+      time.onchange = () => { const [h, m] = time.value.split(":").map(Number); if (!isNaN(h)) setReminder(sw.checked, h, m); };
+      remPanel.append(el("label", { class: "switch" }, el("span", { text: "Avisar-me se não anotar nada no dia" }), sw),
+        el("div", { class: "setrow" }, el("span", { class: "muted", text: "Hora do aviso" }), time));
+    } else remPanel.append(el("p", { class: "muted", text: "O lembrete funciona no app instalado (APK) para Android." }));
+    body.append(remPanel);
+
+    // Carteiras
+    const wPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Carteiras" }),
+      el("p", { class: "muted", text: "Escolha as carteiras que usa. O saldo de cada uma aparece em Carteira." }));
+    for (const w of wallets()) {
+      const name = el("input", { value: w.name, maxlength: 20, "aria-label": "Nome da carteira" });
+      name.addEventListener("change", () => { const v = name.value.trim(); if (v) { w.name = v; save(); toast("Carteira renomeada"); } else name.value = w.name; });
+      const sw = el("input", { type: "checkbox", "aria-label": "Mostrar " + w.name }); sw.checked = w.show;
+      sw.onchange = () => { w.show = sw.checked; if (!usedWallets().length) { w.show = true; sw.checked = true; toast("Precisa de pelo menos uma carteira."); } save(); };
+      wPanel.append(el("div", { class: "setrow switch" }, el("span", { class: "icon-pick" }, svg(w.icon)), name, sw));
+    }
+    body.append(wPanel);
 
     for (const t of ["out", "in"]) body.append(catEditor(t));
 
+    // Cópia
     const last = data.settings.lastBackup;
     const fileIn = el("input", { type: "file", accept: ".json,application/json", hidden: true, onchange: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) readBackup(f); } });
     body.append(el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Cópia de segurança" }),
@@ -570,7 +1009,7 @@
 
   function catEditor(t) {
     const panel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: t === "out" ? "Categorias de gastos" : "Categorias de entradas" }),
-      el("p", { class: "muted", text: "Toque no ícone para o trocar e no quadrado de cor para mudar a cor." }));
+      el("p", { class: "muted", text: t === "out" ? "Toque no ícone para o trocar. Defina um limite por mês para receber um aviso aos 80% e ao passar." : "Toque no ícone para o trocar." }));
     const used = new Set(data.entries.filter((e) => e.t === t).map((e) => e.cat));
     for (const c of catList(t)) {
       const icon = el("button", { type: "button", class: "icon-pick", "aria-label": "Trocar ícone de " + c.name }, svg(c.icon));
@@ -587,6 +1026,15 @@
         data.cats[t] = catList(t).filter((x) => x.id !== c.id); save(); renderAjustes();
       };
       panel.append(el("div", { class: "setrow" }, icon, name, color, del));
+      if (t === "out") {
+        const lim = el("input", { inputmode: "decimal", autocomplete: "off", placeholder: "sem limite", value: c.limit ? fmtPlain(c.limit) : "", "aria-label": "Limite mensal de " + c.name });
+        lim.addEventListener("change", () => {
+          const raw = lim.value.trim(); const v = raw === "" ? 0 : parseMoney(raw);
+          if (v === null) { lim.value = c.limit ? fmtPlain(c.limit) : ""; toast("Escreva um valor, por exemplo 3000."); return; }
+          c.limit = v; save(); toast(v ? `Limite de ${c.name}: ${fmt(v)} por mês` : `${c.name} sem limite`);
+        });
+        panel.append(el("div", { class: "setrow-sub" }, el("span", { text: "Limite/mês" }), lim));
+      }
     }
     panel.append(el("button", { type: "button", class: "btn", text: "+ Nova categoria", onclick: () => {
       const palette = ["#ff9f5a", "#4fd1a1", "#a58bff", "#5b9dff", "#ffd25a", "#4cc9f0", "#ff6b8b", "#f6a6ff", "#7ee0ff"];
@@ -599,8 +1047,7 @@
 
   // ---------- Ficheiros ----------
   async function offerFile(filename, text, mime) {
-    // Dentro do APK: o Android abre a janela "Partilhar" (WhatsApp, Drive, Ficheiros…)
-    if (window.CadernetaAndroid) { window.CadernetaAndroid.partilharFicheiro(filename, mime, text); return true; }
+    if (android) { android.partilharFicheiro(filename, mime, text); return true; }
     const blob = new Blob([text], { type: mime });
     try {
       const file = new File([blob], filename, { type: mime });
@@ -617,9 +1064,13 @@
   }
   function exportCsv() {
     const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
-    const lines = [["Data", "Tipo", "Categoria", "Pagamento", "Nota", "Valor (MT)"].join(";")];
-    for (const e of data.entries.slice().sort((a, b) => a.d.localeCompare(b.d)))
-      lines.push([e.d, e.t === "in" ? "Entrada" : "Gasto", esc(catById(e.t, e.cat).name), e.pay, esc(e.note || ""), ((e.t === "in" ? 1 : -1) * e.v / 100).toFixed(2).replace(".", ",")].join(";"));
+    const lines = [["Data", "Tipo", "Categoria / Meta", "Carteira", "Para carteira", "Nota", "Valor (MT)"].join(";")];
+    const TYPE = { out: "Gasto", in: "Entrada", tr: "Transferência", goal: "Meta" };
+    for (const e of data.entries.slice().sort((a, b) => a.d.localeCompare(b.d))) {
+      const what = e.t === "goal" ? goalById(e.g).name : e.t === "tr" ? "" : catById(e.t, e.cat).name;
+      const sign = e.t === "in" ? 1 : e.t === "out" ? -1 : e.t === "goal" ? -1 : 1;
+      lines.push([e.d, TYPE[e.t], esc(what), esc(walletById(e.w).name), e.w2 ? esc(walletById(e.w2).name) : "", esc(e.note || ""), (sign * e.v / 100).toFixed(2).replace(".", ",")].join(";"));
+    }
     offerFile(`caderneta-${today()}.csv`, "﻿" + lines.join("\r\n"), "text/csv");
   }
   function readBackup(file) {
@@ -638,17 +1089,16 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.1.0";
+  const APP_VERSION = "1.2.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
-  // Botão "voltar" do Android (chamado pelo APK): devolve true se tratou o toque.
   window.__cadernetaVoltar = () => {
-    if ($("editDlg").open) { $("editDlg").close(); return true; }
+    if ($("formDlg").open) { $("formDlg").close(); return true; }
     if (view !== "lancar") { location.hash = "#lancar"; return true; }
     return false;
   };
-  // O APK informa a altura da barra de estado (o céu azul passa por baixo dela).
   window.__cadernetaInsets = (top) => { document.documentElement.style.setProperty("--inset-top", top + "px"); };
 
+  save(); // grava a migração e informa o APK do último lançamento
   setLaunchType("out");
   if (!location.hash) history.replaceState(null, "", "#lancar");
   route();

@@ -159,7 +159,42 @@ class MainActivity : Activity() {
     }
 
     /** Chamado pelo JavaScript para partilhar a cópia de segurança e o ficheiro do Excel. */
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (requestCode == PEDIDO_NOTIFICACOES) {
+            val ok = grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!ok) Lembretes.definir(this, false, Lembretes.hora(this), Lembretes.minuto(this))
+            web.evaluateJavascript("window.__cadernetaPermissao && window.__cadernetaPermissao($ok)", null)
+            return
+        }
+        @Suppress("DEPRECATION")
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
+    private fun notificacoesPermitidas(): Boolean =
+        android.os.Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
     inner class Ponte {
+        @JavascriptInterface
+        fun definirLembrete(ativo: Boolean, hora: Int, minuto: Int) {
+            Lembretes.definir(this@MainActivity, ativo, hora, minuto)
+            if (ativo && !notificacoesPermitidas()) {
+                runOnUiThread { requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), PEDIDO_NOTIFICACOES) }
+            }
+        }
+
+        @JavascriptInterface
+        fun estadoLembrete(): String {
+            val c = this@MainActivity
+            return "{\"ativo\":${Lembretes.ativo(c)},\"hora\":${Lembretes.hora(c)},\"minuto\":${Lembretes.minuto(c)},\"permitido\":${notificacoesPermitidas()}}"
+        }
+
+        @JavascriptInterface
+        fun ultimoLancamento(dia: String) {
+            Lembretes.registarUltimo(this@MainActivity, dia)
+        }
+
         @JavascriptInterface
         fun partilharFicheiro(nome: String, tipo: String, conteudo: String) {
             runOnUiThread {
@@ -187,5 +222,6 @@ class MainActivity : Activity() {
     companion object {
         private const val HOST = "appassets.androidplatform.net"
         private const val PEDIDO_FICHEIRO = 41
+        private const val PEDIDO_NOTIFICACOES = 42
     }
 }
