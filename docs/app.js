@@ -1,29 +1,76 @@
-/* Caderneta de Gastos — tudo fica guardado no próprio telemóvel (localStorage). */
+/* Caderneta de Gastos — os dados ficam guardados no próprio telemóvel (localStorage). */
 (() => {
   "use strict";
+
+  // ================= Ícones (linha branca) =================
+  const ICONS = {
+    alim: '<path d="M7 3v7M5 3v4.5a2 2 0 0 0 4 0V3M7 10v11"/><path d="M17 21V3c-2.2 1.2-3.3 3.4-3.3 6.2 0 2.3 1.1 3.8 3.3 3.8"/>',
+    merc: '<path d="M3 4h2.2l2.3 11h10.8l2-7.5H6.3"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/>',
+    transp: '<rect x="4.5" y="3.5" width="15" height="13" rx="3"/><path d="M4.5 10.5h15M8 16.5v3M16 16.5v3M8 13.5h.01M16 13.5h.01"/>',
+    casa: '<path d="M3.5 11L12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5M10 20v-5.5h4V20"/>',
+    energ: '<path d="M13 3L5.5 13.5H11L10 21l7.5-10.5H12L13 3z"/>',
+    cred: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+    saude: '<path d="M12 20s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.3a4.2 4.2 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20z"/><path d="M12 10.5v4M10 12.5h4"/>',
+    famil: '<circle cx="9" cy="8" r="3"/><path d="M3.5 20c.4-3.3 2.6-5.5 5.5-5.5s5.1 2.2 5.5 5.5"/><path d="M15.5 5.3a3 3 0 0 1 0 5.4M17.5 14.8c1.7.7 2.8 2.5 3 5.2"/>',
+    lazer: '<rect x="3.5" y="8" width="17" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12"/><path d="M12 8C10.6 5 7 4.6 7 6.5S10 8 12 8zM12 8c1.4-3 5-3.4 5-1.5S14 8 12 8z"/>',
+    outros: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
+    salario: '<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18M11 12.5v2h2v-2"/>',
+    negocio: '<path d="M4 9l1.2-5h13.6L20 9M4 9v11h16V9"/><path d="M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9M10 20v-5h4v5"/>',
+    outent: '<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>',
+    tag: '<path d="M3.5 12.5V4h8.5l8.5 8.5-8 8-9-8z"/><circle cx="8" cy="8.5" r="1.3"/>',
+    gift: '<rect x="3.5" y="8" width="17" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12"/>',
+    book: '<path d="M4 5.5A2 2 0 0 1 6 3.5h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20.5V5.5M8 7.5h7"/>',
+    cafe: '<path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8zM17 9.5h1.5a2.5 2.5 0 0 1 0 5H17M7 3.5v2M10.5 3.5v2M14 3.5v2"/>',
+    roupa: '<path d="M8.5 3.5L4 6l1.8 4 2-.8V20.5h8.4V9.2l2 .8L20 6l-4.5-2.5a3.5 3.5 0 0 1-7 0z"/>',
+    igreja: '<path d="M12 2.5v5M9.5 5h5M5.5 21v-8L12 8l6.5 5v8z"/><path d="M10 21v-4h4v4"/>',
+    // ícones da interface
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    minus: '<path d="M5 12h14"/>',
+    list: '<path d="M8 6.5h12M8 12h12M8 17.5h12M4 6.5h.01M4 12h.01M4 17.5h.01"/>',
+    shield: '<path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2 2 4-4"/>',
+    doc: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M3.5 10h17M7.5 14.5h4"/>',
+    coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.3c-.5-1-1.6-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.8 5.7 1.6 5.7 4.4 0 1.2-1.2 2.1-2.9 2.1-1.3 0-2.4-.6-2.9-1.6M12 6.2v1.5M12 16.3v1.5"/>'
+  };
+  const CAT_ICON_CHOICES = ["alim", "merc", "transp", "casa", "energ", "cred", "saude", "famil", "lazer", "cafe", "roupa", "book", "igreja", "gift", "salario", "negocio", "outent", "outros", "tag"];
+  const svg = (name, extra = "") => {
+    const s = document.createElement("span");
+    s.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" ${extra}>${ICONS[name] || ICONS.tag}</svg>`;
+    return s.firstChild;
+  };
 
   // ================= Dados base =================
   const KEY = "caderneta:v1";
   const PAYS = ["Dinheiro", "M-Pesa", "e-Mola", "mKesh", "Banco"];
   const DEFAULT_CATS = {
     out: [
-      ["alim", "Alimentação", "#d9752a"], ["merc", "Mercado", "#2f9568"], ["transp", "Transporte", "#7259c4"],
-      ["casa", "Casa", "#4874a6"], ["energ", "Energia e água", "#b8941c"], ["cred", "Crédito e dados", "#2f93aa"],
-      ["saude", "Saúde", "#c9404f"], ["famil", "Família", "#a85f22"], ["lazer", "Lazer", "#984a8c"], ["outros", "Outros", "#7d8a85"]
+      ["alim", "Alimentação", "#ff9f5a"], ["merc", "Mercado", "#4fd1a1"], ["transp", "Transporte", "#a58bff"],
+      ["casa", "Casa", "#5b9dff"], ["energ", "Energia e água", "#ffd25a"], ["cred", "Crédito e dados", "#4cc9f0"],
+      ["saude", "Saúde", "#ff6b8b"], ["famil", "Família", "#f6a6ff"], ["lazer", "Lazer", "#7ee0ff"], ["outros", "Outros", "#9aa6c8"]
     ],
-    in: [["salario", "Salário", "#187a49"], ["negocio", "Negócio / biscate", "#36985f"], ["outent", "Outras entradas", "#5fae82"]]
+    in: [["salario", "Salário", "#5fe3a1"], ["negocio", "Negócio / biscate", "#9be36f"], ["outent", "Outras entradas", "#7fd8c0"]]
   };
 
   function freshData() {
     const cats = {};
-    for (const t of ["out", "in"]) cats[t] = DEFAULT_CATS[t].map(([id, name, color]) => ({ id, name, color }));
+    for (const t of ["out", "in"]) cats[t] = DEFAULT_CATS[t].map(([id, name, color]) => ({ id, name, color, icon: id }));
     return { version: 1, entries: [], cats, settings: { saveGoal: 0, lastBackup: 0 } };
   }
   function isValidData(d) {
     return d && d.version === 1 && Array.isArray(d.entries) && d.cats && Array.isArray(d.cats.out) && Array.isArray(d.cats.in) && d.settings;
   }
+  // Dados da versão 1.0: as categorias ainda não tinham ícone.
+  const OLD_COLORS = { alim: "#d9752a", merc: "#2f9568", transp: "#7259c4", casa: "#4874a6", energ: "#b8941c", cred: "#2f93aa", saude: "#c9404f", famil: "#a85f22", lazer: "#984a8c", outros: "#7d8a85", salario: "#187a49", negocio: "#36985f", outent: "#5fae82" };
+  function migrate(d) {
+    const newColor = {}; for (const t of ["out", "in"]) for (const [id, , color] of DEFAULT_CATS[t]) newColor[id] = color;
+    for (const t of ["out", "in"]) for (const c of d.cats[t]) {
+      if (!c.icon) c.icon = ICONS[c.id] ? c.id : "tag";
+      // cores antigas (tema claro) passam para as do tema azul, se não foram mudadas
+      if (OLD_COLORS[c.id] && c.color === OLD_COLORS[c.id]) c.color = newColor[c.id];
+    }
+    return d;
+  }
   function loadData() {
-    try { const d = JSON.parse(localStorage.getItem(KEY)); if (isValidData(d)) return d; } catch (e) { /* sem dados */ }
+    try { const d = JSON.parse(localStorage.getItem(KEY)); if (isValidData(d)) return migrate(d); } catch (e) { /* sem dados */ }
     return freshData();
   }
   let data = loadData();
@@ -65,8 +112,9 @@
     if (iso === isoOf(yd)) return "Ontem";
     return `${WEEKDAYS[new Date(y, mo - 1, d).getDay()]}, ${d} de ${MONTHS_S[mo - 1]}`;
   };
-  const weekStart = () => { const d = new Date(); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return isoOf(d); }; // segunda-feira
+  const weekStart = () => { const d = new Date(); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return isoOf(d); };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const timeOf = (ts) => { if (!ts) return ""; const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
   // Formato moçambicano: 1 250,50 MT (sem casas decimais quando o valor é inteiro)
   function fmtNum(cents) {
@@ -76,8 +124,14 @@
     return (neg ? "−" : "") + s + (dec ? "," + pad(dec) : "");
   }
   const fmt = (cents) => fmtNum(cents) + " MT";
+  // Valor com as casas decimais e "MT" esbatidos, como no saldo grande
+  function moneyEl(cents, sign = "") {
+    const neg = cents < 0; const abs = Math.abs(Math.round(cents));
+    const int = Math.floor(abs / 100), dec = abs % 100;
+    const s = String(int).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return el("span", { class: "money num" }, (neg ? "−" : sign) + s, dec ? el("span", { class: "dec", text: "," + pad(dec) }) : null, el("span", { class: "cur", text: "MT" }));
+  }
 
-  // "1 250,5" | "1250.50" -> centavos
   function parseMoney(s) {
     s = String(s).trim().replace(/[\s ]|MT|MZN/gi, "");
     if (!s) return null;
@@ -89,11 +143,13 @@
   }
 
   const catList = (type) => data.cats[type];
-  const catById = (type, id) => catList(type).find((c) => c.id === id) || { id, name: "Sem categoria", color: "#7d8a85" };
-  const initials = (name) => { const w = name.trim().split(/\s+/)[0] || "?"; return w.charAt(0).toUpperCase() + (w.charAt(1) || "").toLowerCase(); };
-
+  const catById = (type, id) => catList(type).find((c) => c.id === id) || { id, name: "Sem categoria", color: "#9aa6c8", icon: "tag" };
   const sum = (list) => list.reduce((a, e) => a + e.v, 0);
   const inMonth = (m) => data.entries.filter((e) => monthOf(e.d) === m);
+
+  function catIcon(c, cls = "tx-ic") {
+    return el("span", { class: cls }, svg(c.icon), el("i", { style: `background:${c.color}` }));
+  }
 
   // ================= Aviso (toast) =================
   let toastTimer;
@@ -107,34 +163,26 @@
   }
 
   // ================= Navegação =================
-  const VIEWS = { lancar: "Lançar", resumo: "Resumo", historico: "Histórico", ajustes: "Ajustes" };
+  const VIEWS = ["lancar", "resumo", "historico", "ajustes"];
   let view = "lancar";
   let viewMonth = monthOf(today());
   function route() {
     const h = location.hash.replace("#", "");
-    view = VIEWS[h] ? h : "lancar";
-    for (const k of Object.keys(VIEWS)) $("v-" + k).hidden = k !== view;
+    view = VIEWS.includes(h) ? h : "lancar";
+    for (const k of VIEWS) $("v-" + k).hidden = k !== view;
     document.querySelectorAll(".tabs a").forEach((a) => { if (a.dataset.tab === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
-    $("viewTitle").textContent = VIEWS[view];
-    document.querySelector("main").scrollTop = 0;
+    $("main").scrollTop = 0;
     renderView();
   }
   window.addEventListener("hashchange", route);
   document.querySelectorAll(".mbtn").forEach((b) => b.addEventListener("click", () => { viewMonth = shiftMonth(viewMonth, Number(b.dataset.mdelta)); histFilter = null; renderView(); }));
 
   function renderView() {
-    renderAppbar();
     document.querySelectorAll(".mlabel").forEach((n) => (n.textContent = monthName(viewMonth)));
     if (view === "lancar") renderLaunch();
     else if (view === "resumo") renderResumo();
     else if (view === "historico") renderHist();
     else renderAjustes();
-  }
-  function renderAppbar() {
-    const t = today();
-    const spentToday = sum(data.entries.filter((e) => e.t === "out" && e.d === t));
-    const spentMonth = sum(inMonth(monthOf(t)).filter((e) => e.t === "out"));
-    $("appbarSub").textContent = `Hoje ${fmt(spentToday)} · Mês ${fmt(spentMonth)}`;
   }
 
   // ================= Lançar =================
@@ -184,20 +232,23 @@
     renderLaunch();
   }
 
+  function greeting() {
+    const h = new Date().getHours();
+    return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  }
+
   function renderLaunch() {
-    // categorias
+    $("greeting").textContent = greeting();
+    const spentToday = sum(data.entries.filter((e) => e.t === "out" && e.d === today()));
+    $("todayAmount").replaceChildren(moneyEl(spentToday));
+
     const grid = $("catGrid"); grid.replaceChildren();
     const cats = catList(launch.type);
     grid.classList.toggle("few", cats.length <= 6);
-    for (const c of cats) {
-      grid.append(el("button", { type: "button", class: "cat", onclick: () => commit(c) },
-        el("span", { class: "ic", style: `background:${c.color}`, text: initials(c.name) }),
-        el("span", { class: "nm", text: c.name })));
-    }
-    // pagamento
+    for (const c of cats) grid.append(el("button", { type: "button", class: "action", onclick: () => commit(c) }, svg(c.icon), el("span", { text: c.name })));
+
     const pc = $("payChips"); pc.replaceChildren();
     for (const p of PAYS) pc.append(el("button", { type: "button", class: "chip", "aria-pressed": String(launch.pay === p), onclick: () => { launch.pay = p; renderLaunch(); } }, p));
-    pc.closest(".more-body").querySelector(".chips").hidden = false;
     if (!$("date").value) $("date").value = today();
     $("date").max = today();
     const d = $("date").value;
@@ -219,10 +270,12 @@
     data.entries.push(entry); save();
     launch.expr = ""; $("note").value = ""; $("date").value = today(); launch.pay = "Dinheiro"; $("more").open = false;
     if (navigator.vibrate) navigator.vibrate(15);
-    renderAppbar(); renderLaunch();
+    renderLaunch();
     toast(`${fmt(v)} em ${cat.name}`, ["Desfazer", () => { data.entries = data.entries.filter((x) => x.id !== entry.id); save(); renderView(); toast("Lançamento desfeito"); }]);
   }
 
+  $("moreToggle").onclick = () => { $("more").open = !$("more").open; };
+  $("more").addEventListener("toggle", () => $("moreToggle").setAttribute("aria-expanded", String($("more").open)));
   $("typeOut").onclick = () => setLaunchType("out");
   $("typeIn").onclick = () => setLaunchType("in");
   $("keypad").addEventListener("click", (e) => { const b = e.target.closest("button[data-k]"); if (b) pressKey(b.dataset.k); });
@@ -242,135 +295,160 @@
   // ================= Resumo =================
   function renderResumo() {
     const body = $("resumoBody"); body.replaceChildren();
-    renderBackupNag();
-    const m = viewMonth, cur = monthOf(today()), isCur = m === cur;
+    const m = viewMonth, isCur = m === monthOf(today());
     const list = inMonth(m);
     const outs = list.filter((e) => e.t === "out"), ins = list.filter((e) => e.t === "in");
     const S = sum(outs), E = sum(ins), G = data.settings.saveGoal || 0;
+    const left = E - S;
+
+    // Hoje / semana / mês
+    if (isCur) {
+      const t = today(), ws = weekStart();
+      body.append(el("div", { class: "kpis" },
+        kpi("Hoje", sum(outs.filter((e) => e.d === t))),
+        kpi("Esta semana", sum(data.entries.filter((e) => e.t === "out" && e.d >= ws && e.d <= t))),
+        kpi("Este mês", S)));
+    }
+
+    // Cartão de vidro: sobra do mês
+    const [y, mo] = m.split("-").map(Number);
+    body.append(el("div", { class: "glass-card bank-card" },
+      el("div", { class: "bank-top" }, el("span", { class: "bank-mark" }, svg("coin")), el("span", { class: "bank-month", text: `${MONTHS_S[mo - 1]} ${y}` })),
+      el("div", {}, el("div", { class: "bank-label", text: "Sobra do mês" }),
+        el("div", { class: "bank-number" }, fmtNum(left), el("span", { class: "cur", text: "MT" }))),
+      el("div", { class: "bank-bottom" },
+        el("span", {}, "Entradas", el("b", { text: fmt(E) })),
+        el("span", { style: "text-align:right" }, "Gastos", el("b", { text: fmt(S) })))));
+
+    // Ações rápidas
+    body.append(el("div", { class: "controls" },
+      control("plus", "Novo gasto", () => { setLaunchType("out"); location.hash = "#lancar"; }),
+      control("outent", "Nova entrada", () => { setLaunchType("in"); location.hash = "#lancar"; }),
+      control("list", "Histórico", () => { location.hash = "#historico"; }),
+      control("shield", "Cópia", doBackup)));
+
+    renderBackupNag(body);
 
     if (!data.entries.length) {
-      body.append(el("div", { class: "card empty" },
+      body.append(el("div", { class: "panel empty" },
         el("strong", { text: "Ainda não há lançamentos" }),
         el("span", { text: "Vá a Lançar, digite um valor e toque numa categoria. O resumo aparece aqui." }),
         el("a", { class: "btn primary", href: "#lancar", text: "Fazer o primeiro lançamento" })));
       return;
     }
 
-    // Hoje / semana / mês
-    if (isCur) {
-      const t = today(), ws = weekStart();
-      const sToday = sum(outs.filter((e) => e.d === t));
-      const sWeek = sum(data.entries.filter((e) => e.t === "out" && e.d >= ws && e.d <= t));
-      body.append(el("div", { class: "kpis" },
-        kpi("Hoje", sToday), kpi("Esta semana", sWeek), kpi("Este mês", S)));
-    }
-
-    // Sobra do mês e meta
-    const left = E - S;
-    const goalCard = el("div", { class: "card" },
-      el("div", { class: "label", text: "Sobra do mês" }),
-      el("div", { class: "big num " + (left < 0 ? "neg" : "pos"), text: fmt(left) }),
-      el("div", { class: "split" },
-        el("div", {}, el("span", { class: "label", text: "Entradas" }), el("span", { class: "num pos", text: fmt(E) })),
-        el("div", {}, el("span", { class: "label", text: "Gastos" }), el("span", { class: "num neg", text: fmt(S) }))));
-    if (!G) {
-      goalCard.append(el("p", { class: "muted", text: "Defina quanto quer guardar por mês e o app diz quanto ainda pode gastar." }),
-        el("a", { class: "btn", href: "#ajustes", text: "Definir meta de poupança" }));
-    } else if (!E) {
-      goalCard.append(el("p", { class: "muted", text: `Meta: guardar ${fmt(G)}. Registe as entradas do mês (salário, negócio) para ver quanto pode gastar.` }));
+    // Dois mosaicos: gasto do mês e poupança
+    const tiles = el("div", { class: "tiles" });
+    if (G && E) {
+      const canSpend = Math.max(0, E - G);
+      const pct = canSpend ? S / canSpend : (S ? 2 : 0);
+      let note;
+      if (S <= canSpend) {
+        const days = isCur ? daysIn(m) - Number(today().slice(8)) + 1 : 0;
+        note = isCur ? el("span", { class: "tile-note", text: `≈ ${fmt(Math.floor((canSpend - S) / days / 100) * 100)} por dia` }) : el("span", { class: "tile-note good", text: "Dentro do limite" });
+      } else note = el("span", { class: "tile-note bad", text: `Passou ${fmt(S - canSpend)}` });
+      tiles.append(tile("Gasto do mês", S, canSpend, pct, note));
+      const saved = Math.max(0, left);
+      tiles.append(tile("Poupança", saved, G, G ? saved / G : 0,
+        el("span", { class: "tile-note " + (saved >= G ? "good" : ""), text: saved >= G ? "Meta cumprida" : `Faltam ${fmt(G - saved)}` }), true));
     } else {
-      const canSpend = E - G;
-      const remaining = canSpend - S;
-      const pct = canSpend > 0 ? S / canSpend : 2;
-      const meter = el("div", { class: "meter" + (pct > 1 ? " over" : pct > 0.85 ? " warn" : "") }, el("span", { style: `width:${Math.min(100, pct * 100).toFixed(1)}%` }));
-      let status;
-      if (remaining >= 0) {
-        let perDay = "";
-        if (isCur) { const days = daysIn(m) - Number(today().slice(8)) + 1; perDay = ` Isso dá cerca de ${fmt(Math.floor(remaining / days / 100) * 100)} por dia até ao fim do mês.`; }
-        status = el("p", { class: "muted" }, el("span", { class: "pill good", text: "Dentro da meta" }), ` Ainda pode gastar ${fmt(remaining)} e guardar ${fmt(G)}.${perDay}`);
-      } else {
-        const saved = Math.max(0, E - S);
-        status = el("p", { class: "muted" }, el("span", { class: "pill bad", text: "Meta em risco" }), ` Passou ${fmt(-remaining)} do que podia gastar. Assim, vai guardar ${fmt(saved)} em vez de ${fmt(G)}.`);
-      }
-      goalCard.append(el("div", { class: "label", text: `Meta: guardar ${fmt(G)} · pode gastar ${fmt(Math.max(0, canSpend))}` }), meter, status);
+      tiles.append(el("div", { class: "tile" }, el("span", { class: "tile-title", text: "Gasto do mês" }), el("span", { class: "tile-value", text: fmt(S) }),
+        el("span", { class: "tile-note", text: `${outs.length} lançamento${outs.length === 1 ? "" : "s"}` })));
+      tiles.append(el("div", { class: "tile" }, el("span", { class: "tile-title", text: "Poupança" }),
+        el("span", { class: "tile-note", text: !G ? "Defina quanto quer guardar por mês." : "Registe as entradas do mês para ver o progresso." }),
+        !G ? el("a", { class: "link", href: "#ajustes", text: "Definir meta" }) : el("a", { class: "link", href: "#lancar", onclick: () => setLaunchType("in"), text: "Registar entrada" })));
     }
-    body.append(goalCard);
+    body.append(tiles);
+
+    // Linha "extrato"
+    body.append(el("a", { class: "row-card", href: "#historico" }, el("span", { class: "ic-box" }, svg("doc")), el("span", { class: "t", text: `Lançamentos de ${MONTHS[mo - 1]}` }), el("span", { class: "link", text: "Ver" })));
 
     // Categorias
-    const prev = inMonth(shiftMonth(m, -1)).filter((e) => e.t === "out");
+    const prevM = shiftMonth(m, -1);
+    const prev = inMonth(prevM).filter((e) => e.t === "out");
     const byCat = {}, byPrev = {};
     for (const e of outs) byCat[e.cat] = (byCat[e.cat] || 0) + e.v;
     for (const e of prev) byPrev[e.cat] = (byPrev[e.cat] || 0) + e.v;
     const rows = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-    const catCard = el("div", { class: "card" }, el("h2", { text: "Para onde foi o dinheiro" }));
-    if (!rows.length) catCard.append(el("p", { class: "muted", text: "Nenhum gasto neste mês." }));
+    const catPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Para onde foi o dinheiro" }));
+    if (!rows.length) catPanel.append(el("p", { class: "muted", text: "Nenhum gasto neste mês." }));
     else {
       const top = catById("out", rows[0][0]);
-      catCard.append(el("p", { class: "muted", text: `${top.name} é o seu maior gasto: ${Math.round(rows[0][1] / S * 100)}% de tudo o que gastou no mês.` }));
-      const wrap = el("div", { class: "catrows" });
+      catPanel.append(el("p", { class: "muted", text: `${top.name} é o seu maior gasto: ${Math.round(rows[0][1] / S * 100)}% do mês.` }));
       const max = rows[0][1];
+      const wrap = el("div");
       for (const [id, v] of rows) {
         const c = catById("out", id);
         const p = byPrev[id] || 0;
-        let delta;
-        if (!prev.length) delta = el("span", { text: "" });
-        else if (!p) delta = el("span", { class: "up", text: "novo este mês" });
-        else { const ch = Math.round((v - p) / p * 100); delta = el("span", { class: ch > 0 ? "up" : ch < 0 ? "down" : "", text: ch === 0 ? "igual ao mês anterior" : `${ch > 0 ? "▲" : "▼"} ${Math.abs(ch)}% vs. ${MONTHS_S[Number(shiftMonth(m, -1).slice(5)) - 1]}` }); }
-        wrap.append(el("div", { class: "catrow" },
-          el("div", { class: "top" }, el("span", { class: "n" }, el("span", { class: "dot", style: `background:${c.color}` }), el("span", { text: c.name })), el("span", { class: "num", text: fmt(v) })),
-          el("div", { class: "bar" }, el("span", { style: `width:${(v / max * 100).toFixed(1)}%;background:${c.color}` })),
-          el("div", { class: "sub" }, el("span", { text: `${Math.round(v / S * 100)}% do mês` }), delta)));
+        let delta = null;
+        if (prev.length) {
+          if (!p) delta = el("span", { class: "up", text: "novo" });
+          else { const ch = Math.round((v - p) / p * 100); delta = el("span", { class: ch > 0 ? "up" : ch < 0 ? "down" : "", text: ch === 0 ? "igual" : `${ch > 0 ? "▲" : "▼"} ${Math.abs(ch)}% vs ${MONTHS_S[Number(prevM.slice(5)) - 1]}` }); }
+        }
+        wrap.append(el("div", { class: "tx" }, catIcon(c),
+          el("div", {}, el("div", { class: "t", text: c.name }),
+            el("div", { class: "s" }, el("span", { text: `${Math.round(v / S * 100)}% do mês` }), delta ? el("span", { class: "dotsep" }, delta) : null),
+            el("div", { class: "bar" }, el("span", { style: `width:${(v / max * 100).toFixed(1)}%;background:${c.color}` }))),
+          el("span", { class: "amt", text: fmt(v) })));
       }
-      catCard.append(wrap);
+      catPanel.append(wrap);
     }
-    body.append(catCard);
-
-    // Últimos 6 meses
+    body.append(catPanel);
     body.append(monthsChart(m));
   }
 
-  function kpi(label, v) {
-    return el("div", { class: "kpi" }, el("span", { class: "label", text: label }), el("span", { class: "v num", text: fmt(v) }));
+  function kpi(label, v) { return el("div", { class: "kpi" }, el("span", { class: "label", text: label }), el("span", { class: "v num", text: fmt(v) })); }
+  function control(icon, label, fn) { return el("button", { type: "button", class: "control", onclick: fn }, el("span", { class: "bubble" }, svg(icon)), el("span", { text: label })); }
+  function tile(title, value, of, pct, note, overIsGood = false) {
+    const p = Math.max(0, pct);
+    const shown = Math.min(100, Math.round(p * 100));
+    const pillPos = shown < 20 ? "flex-start" : shown > 80 ? "flex-end" : "center";
+    return el("div", { class: "tile" },
+      el("span", { class: "tile-title", text: title }),
+      el("span", { class: "tile-value num" }, fmtNum(value), " ", el("small", { text: "/ " + fmtNum(of) })),
+      el("div", { class: "meter-wrap", style: `--pill-pos:${pillPos}` },
+        el("span", { class: "pill-pct", text: Math.round(p * 100) + "%" }),
+        el("div", { class: "meter" + (overIsGood ? (p >= 1 ? " full" : "") : (p > 1 ? " over" : p > 0.85 ? " warn" : "")) }, el("span", { style: `width:${shown}%` }))),
+      note);
   }
 
   function monthsChart(m) {
     const months = []; for (let i = 5; i >= 0; i--) months.push(shiftMonth(m, -i));
     const vals = months.map((mm) => { const l = inMonth(mm); return { m: mm, out: sum(l.filter((e) => e.t === "out")), in: sum(l.filter((e) => e.t === "in")) }; });
     const max = Math.max(1, ...vals.map((v) => Math.max(v.out, v.in)));
-    const W = 340, H = 170, T = 22, B = 24, L = 4, R = 4;
-    const colW = (W - L - R) / 6, bw = colW * 0.3;
+    const W = 340, H = 160, T = 12, B = 24, L = 4, R = 4;
+    const colW = (W - L - R) / 6, bw = colW * 0.28;
     const NS = "http://www.w3.org/2000/svg";
     const mk = (tag, a, text) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (text != null) e.textContent = text; return e; };
-    const svg = mk("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Entradas e gastos dos últimos seis meses" });
-    svg.append(mk("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, stroke: "var(--line)" }));
-    const h = (v) => v ? Math.max(2, v / max * (H - T - B)) : 0;
+    const s = mk("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Entradas e gastos dos últimos seis meses" });
+    for (let g = 1; g <= 3; g++) { const yy = T + (H - T - B) * (1 - g / 3); s.append(mk("line", { x1: L, x2: W - R, y1: yy, y2: yy, stroke: "rgba(160,185,255,.08)" })); }
+    s.append(mk("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, stroke: "rgba(160,185,255,.18)" }));
+    const h = (v) => v ? Math.max(3, v / max * (H - T - B)) : 0;
     vals.forEach((v, i) => {
       const cx = L + colW * i + colW / 2;
-      const hi = h(v.in), ho = h(v.out);
-      svg.append(mk("rect", { x: cx - bw - 1, y: H - B - hi, width: bw, height: hi, rx: 2, fill: "var(--in)", opacity: v.m === m ? 1 : 0.55 }, null));
-      svg.append(mk("rect", { x: cx + 1, y: H - B - ho, width: bw, height: ho, rx: 2, fill: "var(--out)", opacity: v.m === m ? 1 : 0.55 }, null));
+      const cur = v.m === m;
+      s.append(mk("rect", { x: cx - bw - 1.5, y: H - B - h(v.in), width: bw, height: h(v.in), rx: 3, fill: "#5fe3a1", opacity: cur ? 1 : 0.45 }));
+      s.append(mk("rect", { x: cx + 1.5, y: H - B - h(v.out), width: bw, height: h(v.out), rx: 3, fill: "#4f86ff", opacity: cur ? 1 : 0.45 }));
       const lbl = mk("text", { x: cx, y: H - 7, "text-anchor": "middle" }, MONTHS_S[Number(v.m.slice(5)) - 1]);
-      if (v.m === m) lbl.setAttribute("style", "fill:var(--ink);font-weight:700");
-      svg.append(lbl);
+      if (cur) lbl.setAttribute("style", "fill:#fff;font-weight:600");
+      s.append(lbl);
     });
-    const cur = vals[5];
-    const card = el("div", { class: "card" }, el("h2", { text: "Últimos 6 meses" }),
-      el("p", { class: "muted" }, el("span", { class: "dot", style: "display:inline-block;background:var(--in);margin-right:6px" }), "Entradas  ", el("span", { class: "dot", style: "display:inline-block;background:var(--out);margin:0 6px 0 12px" }), "Gastos"),
-      el("div", { class: "chart" }, svg));
-    const totalSaved = vals.reduce((a, v) => a + (v.in - v.out), 0);
-    if (vals.some((v) => v.in || v.out)) card.append(el("p", { class: "muted", text: `Nestes 6 meses sobrou ${fmt(totalSaved)} no total.` }));
-    return card;
+    const total = vals.reduce((a, v) => a + (v.in - v.out), 0);
+    return el("section", { class: "panel" },
+      el("h2", { class: "panel-title", text: "Últimos 6 meses" }),
+      el("div", { class: "legend" }, el("span", {}, el("i", { style: "background:#5fe3a1" }), "Entradas"), el("span", {}, el("i", { style: "background:#4f86ff" }), "Gastos")),
+      el("div", { class: "chart" }, s),
+      vals.some((v) => v.in || v.out) ? el("p", { class: "muted", text: `Nestes 6 meses sobrou ${fmt(total)} no total.` }) : null);
   }
 
-  function renderBackupNag() {
-    const box = $("backupNag"); box.replaceChildren();
+  function renderBackupNag(box) {
     if (data.entries.length < 5) return;
     const last = data.settings.lastBackup || 0;
     const days = Math.floor((Date.now() - last) / 86400000);
     if (last && days < 14) return;
     box.append(el("div", { class: "nag" },
-      el("span", { text: last ? `Já passaram ${days} dias desde a última cópia de segurança.` : "Ainda não fez nenhuma cópia de segurança dos seus dados." }),
-      el("button", { type: "button", class: "btn small", text: "Fazer cópia", onclick: doBackup })));
+      el("span", { text: last ? `Já passaram ${days} dias desde a última cópia de segurança.` : "Ainda não fez nenhuma cópia de segurança." }),
+      el("button", { type: "button", class: "btn small primary", text: "Fazer cópia", onclick: doBackup })));
   }
 
   // ================= Histórico =================
@@ -384,34 +462,33 @@
       for (const key of used) {
         const [t, id] = key.split(":"); const c = catById(t, id);
         fbox.append(el("button", { type: "button", class: "chip", "aria-pressed": String(histFilter === key), onclick: () => { histFilter = histFilter === key ? null : key; renderHist(); } },
-          el("span", { class: "dot", style: `background:${c.color}` }), c.name));
+          el("span", { style: `width:8px;height:8px;border-radius:50%;background:${c.color}` }), c.name));
       }
     }
     const box = $("histList"); box.replaceChildren();
     let items = histFilter ? list.filter((e) => e.t + ":" + e.cat === histFilter) : list;
     if (!items.length) {
-      box.append(el("div", { class: "empty" }, el("strong", { text: "Nada em " + monthName(viewMonth) }),
+      box.append(el("div", { class: "panel empty" }, el("strong", { text: "Nada em " + monthName(viewMonth) }),
         el("span", { text: "Os lançamentos que fizer aparecem aqui, agrupados por dia." })));
       return;
     }
-    if (histFilter) {
-      const tot = sum(items);
-      box.append(el("p", { class: "muted", text: `${items.length} lançamento${items.length > 1 ? "s" : ""} · total ${fmt(tot)}` }));
-    }
+    if (histFilter) box.append(el("p", { class: "muted", text: `${items.length} lançamento${items.length > 1 ? "s" : ""} · total ${fmt(sum(items))}` }));
     items = items.slice().sort((a, b) => b.d.localeCompare(a.d) || b.ts - a.ts);
     const groups = new Map();
     for (const e of items) { if (!groups.has(e.d)) groups.set(e.d, []); groups.get(e.d).push(e); }
     for (const [d, g] of groups) {
       const dayOut = sum(g.filter((e) => e.t === "out"));
-      const card = el("div", { class: "day" }, el("div", { class: "day-h" }, el("span", { text: dayName(d) }), el("span", { class: "num", text: dayOut ? fmt(dayOut) : "" })));
+      const panel = el("section", { class: "panel" }, el("div", { class: "day-h" }, el("span", { text: dayName(d) }), el("span", { class: "num", text: dayOut ? fmt(dayOut) : "" })));
+      const wrap = el("div");
       for (const e of g) {
         const c = catById(e.t, e.cat);
-        card.append(el("button", { type: "button", class: "item", onclick: () => openEdit(e.id) },
-          el("span", { class: "ic", style: `background:${c.color}`, text: initials(c.name) }),
-          el("span", {}, el("div", { class: "t", text: e.note || c.name }), el("div", { class: "s", text: (e.note ? c.name + " · " : "") + e.pay })),
+        wrap.append(el("button", { type: "button", class: "tx", onclick: () => openEdit(e.id) }, catIcon(c),
+          el("div", {}, el("div", { class: "t", text: e.note || c.name }),
+            el("div", { class: "s" }, e.ts && e.d === isoOf(new Date(e.ts)) ? el("span", { text: timeOf(e.ts) }) : null, el("span", { class: e.ts && e.d === isoOf(new Date(e.ts)) ? "dotsep" : "", text: (e.note ? c.name + " · " : "") + e.pay }))),
           el("span", { class: "amt num" + (e.t === "in" ? " in" : ""), text: (e.t === "in" ? "+" : "−") + fmt(e.v) })));
       }
-      box.append(card);
+      panel.append(wrap);
+      box.append(panel);
     }
   }
 
@@ -458,11 +535,10 @@
   function renderAjustes() {
     const body = $("ajustesBody"); body.replaceChildren();
 
-    if (installEvt) body.append(el("div", { class: "card" }, el("h2", { text: "Instalar no telemóvel" }),
+    if (installEvt) body.append(el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Instalar no telemóvel" }),
       el("p", { class: "muted", text: "Adicione a Caderneta ao ecrã principal para abrir como um app, mesmo sem internet." }),
       el("button", { type: "button", class: "btn primary", text: "Instalar app", onclick: async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; renderAjustes(); } })));
 
-    // Meta
     const goalIn = el("input", { id: "goalInput", inputmode: "decimal", autocomplete: "off", placeholder: "Ex.: 3 000", value: data.settings.saveGoal ? fmtNum(data.settings.saveGoal).replace(/ /g, "") : "" });
     const goalErr = el("p", { class: "err" });
     const saveGoal = () => {
@@ -472,17 +548,15 @@
       data.settings.saveGoal = v; save(); goalErr.textContent = ""; toast(v ? `Meta definida: guardar ${fmt(v)} por mês` : "Meta removida");
     };
     goalIn.addEventListener("keydown", (e) => { if (e.key === "Enter") saveGoal(); });
-    body.append(el("div", { class: "card" }, el("h2", { text: "Meta de poupança" }),
+    body.append(el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Meta de poupança" }),
       el("p", { class: "muted", text: "Quanto quer guardar por mês? O resumo mostra quanto ainda pode gastar para cumprir a meta." }),
       el("div", { class: "setrow" }, goalIn, el("button", { type: "button", class: "btn primary", text: "Guardar", onclick: saveGoal })), goalErr));
 
-    // Categorias
     for (const t of ["out", "in"]) body.append(catEditor(t));
 
-    // Cópia de segurança
     const last = data.settings.lastBackup;
     const fileIn = el("input", { type: "file", accept: ".json,application/json", hidden: true, onchange: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) readBackup(f); } });
-    body.append(el("div", { class: "card" }, el("h2", { text: "Cópia de segurança" }),
+    body.append(el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Cópia de segurança" }),
       el("p", { class: "muted", text: "Os dados ficam só neste telemóvel. Faça uma cópia de vez em quando e guarde-a no WhatsApp, e-mail ou Google Drive. Se mudar de telemóvel, use Restaurar." }),
       el("p", { class: "muted", text: last ? `Última cópia: ${dayName(isoOf(new Date(last)))} (${new Date(last).toLocaleDateString("pt-PT")}).` : "Ainda não fez nenhuma cópia." }),
       el("div", { class: "btnrow" },
@@ -495,9 +569,12 @@
   }
 
   function catEditor(t) {
-    const card = el("div", { class: "card" }, el("h2", { text: t === "out" ? "Categorias de gastos" : "Categorias de entradas" }));
+    const panel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: t === "out" ? "Categorias de gastos" : "Categorias de entradas" }),
+      el("p", { class: "muted", text: "Toque no ícone para o trocar e no quadrado de cor para mudar a cor." }));
     const used = new Set(data.entries.filter((e) => e.t === t).map((e) => e.cat));
     for (const c of catList(t)) {
+      const icon = el("button", { type: "button", class: "icon-pick", "aria-label": "Trocar ícone de " + c.name }, svg(c.icon));
+      icon.onclick = () => { const i = CAT_ICON_CHOICES.indexOf(c.icon); c.icon = CAT_ICON_CHOICES[(i + 1) % CAT_ICON_CHOICES.length]; save(); icon.replaceChildren(svg(c.icon)); };
       const name = el("input", { value: c.name, maxlength: 24, "aria-label": "Nome da categoria" });
       name.addEventListener("change", () => { const v = name.value.trim(); if (v) { c.name = v; save(); toast("Categoria renomeada"); } else name.value = c.name; });
       const color = el("input", { type: "color", value: c.color, "aria-label": "Cor de " + c.name });
@@ -509,15 +586,15 @@
         if (!armed) { armed = true; del.textContent = used.has(c.id) ? "Remover? Lançamentos ficam sem categoria" : "Remover?"; del.className = "btn small danger"; return; }
         data.cats[t] = catList(t).filter((x) => x.id !== c.id); save(); renderAjustes();
       };
-      card.append(el("div", { class: "setrow" }, color, name, del));
+      panel.append(el("div", { class: "setrow" }, icon, name, color, del));
     }
-    card.append(el("button", { type: "button", class: "btn", text: "+ Nova categoria", onclick: () => {
-      const palette = ["#d9752a", "#2f9568", "#7259c4", "#4874a6", "#b8941c", "#2f93aa", "#c9404f", "#a85f22", "#984a8c"];
-      catList(t).push({ id: uid(), name: "Nova categoria", color: palette[catList(t).length % palette.length] }); save(); renderAjustes();
-      const lastInput = [...document.querySelectorAll("#ajustesBody input:not([type])")].find((i) => i.value === "Nova categoria");
-      if (lastInput) { lastInput.focus(); lastInput.select(); }
+    panel.append(el("button", { type: "button", class: "btn", text: "+ Nova categoria", onclick: () => {
+      const palette = ["#ff9f5a", "#4fd1a1", "#a58bff", "#5b9dff", "#ffd25a", "#4cc9f0", "#ff6b8b", "#f6a6ff", "#7ee0ff"];
+      catList(t).push({ id: uid(), name: "Nova categoria", color: palette[catList(t).length % palette.length], icon: "tag" }); save(); renderAjustes();
+      const input = [...document.querySelectorAll("#ajustesBody input:not([type])")].find((i) => i.value === "Nova categoria");
+      if (input) { input.focus(); input.select(); }
     } }));
-    return card;
+    return panel;
   }
 
   // ---------- Ficheiros ----------
@@ -535,8 +612,7 @@
     return true;
   }
   async function doBackup() {
-    const name = `caderneta-copia-${today()}.json`;
-    const ok = await offerFile(name, JSON.stringify(data), "application/json");
+    const ok = await offerFile(`caderneta-copia-${today()}.json`, JSON.stringify(data), "application/json");
     if (ok) { data.settings.lastBackup = Date.now(); save(); toast("Cópia criada. Guarde o ficheiro num lugar seguro."); renderView(); }
   }
   function exportCsv() {
@@ -556,13 +632,13 @@
         el("span", { text: `A cópia tem ${d.entries.length} lançamentos. Restaurar substitui os ${data.entries.length} lançamentos atuais.` }),
         el("div", { class: "btnrow" },
           el("button", { type: "button", class: "btn small", text: "Cancelar", onclick: () => box.replaceChildren() }),
-          el("button", { type: "button", class: "btn small danger", text: "Restaurar", onclick: () => { data = d; save(); toast("Cópia restaurada"); renderView(); } }))));
+          el("button", { type: "button", class: "btn small danger", text: "Restaurar", onclick: () => { data = migrate(d); save(); toast("Cópia restaurada"); renderView(); } }))));
     };
     r.readAsText(file);
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.0.1";
+  const APP_VERSION = "1.1.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   // Botão "voltar" do Android (chamado pelo APK): devolve true se tratou o toque.
   window.__cadernetaVoltar = () => {
@@ -570,10 +646,12 @@
     if (view !== "lancar") { location.hash = "#lancar"; return true; }
     return false;
   };
+  // O APK informa a altura da barra de estado (o céu azul passa por baixo dela).
+  window.__cadernetaInsets = (top) => { document.documentElement.style.setProperty("--inset-top", top + "px"); };
+
   setLaunchType("out");
   if (!location.hash) history.replaceState(null, "", "#lancar");
   route();
-  // dia mudou com o app aberto
   let lastDay = today();
   document.addEventListener("visibilitychange", () => { if (!document.hidden && today() !== lastDay) { lastDay = today(); viewMonth = monthOf(lastDay); $("date").value = lastDay; renderView(); } });
 

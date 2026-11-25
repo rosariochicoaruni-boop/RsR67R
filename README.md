@@ -24,3 +24,5 @@ As versões novas instalam por cima e mantêm os dados.
 2. Aumente `APP_VERSION` em `docs/app.js` e o número em `CACHE` em `docs/sw.js`.
 3. Aumente `versionCode` (+1) e `versionName` em `app/build.gradle.kts`.
 4. Envie para `main`. Em poucos minutos o novo `Caderneta.apk` aparece em *Releases*.
+
+Envios para outros ramos geram uma **prévia** (pré-lançamento `previa`) para testar antes de juntar ao `main`.

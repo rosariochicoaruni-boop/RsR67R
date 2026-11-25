@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
@@ -32,6 +31,13 @@ import java.io.File
 class MainActivity : Activity() {
 
     private lateinit var web: WebView
+    private var topInsetCss = 0f
+
+    private fun sendInsets() {
+        if (::web.isInitialized) {
+            web.evaluateJavascript("window.__cadernetaInsets && window.__cadernetaInsets($topInsetCss)", null)
+        }
+    }
     private var fileCallback: ValueCallback<Array<Uri>>? = null
 
     private val assetLoader by lazy {
@@ -46,8 +52,6 @@ class MainActivity : Activity() {
 
         // Ecrã inteiro (obrigatório no Android 15): o conteúdo recebe margens das barras do sistema.
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
         val bg = getColor(R.color.fundo)
 
         val root = FrameLayout(this).apply { setBackgroundColor(bg) }
@@ -55,14 +59,18 @@ class MainActivity : Activity() {
         root.addView(web, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(root)
 
+        // Tema escuro: ícones claros nas barras do sistema.
         WindowCompat.getInsetsController(window, root).apply {
-            isAppearanceLightStatusBars = !night
-            isAppearanceLightNavigationBars = !night
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
         }
+        // O céu azul do topo passa por baixo da barra de estado: a altura dela vai para o CSS.
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+            v.setPadding(bars.left, 0, bars.right, maxOf(bars.bottom, ime.bottom))
+            topInsetCss = bars.top / resources.displayMetrics.density
+            sendInsets()
             WindowInsetsCompat.CONSUMED
         }
 
@@ -78,6 +86,10 @@ class MainActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
                 assetLoader.shouldInterceptRequest(request.url)
+
+            override fun onPageFinished(view: WebView, url: String) {
+                sendInsets()
+            }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (request.url.host == HOST) return false

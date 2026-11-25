@@ -2,7 +2,6 @@ name: Compilar APK
 
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -41,3 +40,11 @@ jobs:
           else
             gh release create "$TAG" Caderneta.apk --title "Caderneta $VERSAO" --notes "Descarregue Caderneta.apk no telemóvel Android e instale."
           fi
+      # Envios para outros ramos: publica uma "prévia" para testar antes de juntar ao main.
+      - name: Publicar prévia
+        if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete previa --cleanup-tag -y >/dev/null 2>&1 || true
+          gh release create previa Caderneta.apk --prerelease --target "$GITHUB_SHA" --title "Prévia (${GITHUB_REF_NAME})" --notes "Versão de teste do ramo ${GITHUB_REF_NAME}."
