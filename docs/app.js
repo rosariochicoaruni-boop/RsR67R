@@ -82,6 +82,9 @@
     if (!s.reminder) s.reminder = { on: false, h: 20, m: 0 };
     if (!Array.isArray(d.fixed)) d.fixed = [];
     if (!Array.isArray(d.goals)) d.goals = [];
+    if (!Array.isArray(d.smsSeen)) d.smsSeen = [];
+    if (!d.smsRules) d.smsRules = {};
+    if (!s.sms) s.sms = { on: false };
     // versão 1.0/1.1: forma de pagamento em texto -> carteira
     for (const e of d.entries) {
       if (!e.w) { const w = s.wallets.find((x) => x.name === e.pay); e.w = w ? w.id : "dinheiro"; }
@@ -288,6 +291,146 @@
     $("formDlg").close();
   });
 
+  // ================= Leitura de SMS (e-Mola, M-Pesa, banco) =================
+  // Valores como "1,500.00", "312.50" ou "1.500,00" -> centavos
+  function smsNum(str) {
+    str = String(str).trim();
+    const m = str.match(/^(.*?)[.,](\d{1,2})$/);
+    const int = (m ? m[1] : str).replace(/[.,\s]/g, "");
+    const v = Number(int + "." + (m ? m[2].padEnd(2, "0") : "0"));
+    return isFinite(v) && int !== "" ? Math.round(v * 100) : null;
+  }
+  const AMT = "(\\d[\\d.,]*)\\s?MT";
+  const titleCase = (t) => t.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase()).trim();
+  const normParty = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, " ").trim();
+  const WALLET_LABEL = { emola: "e-Mola", mpesa: "M-Pesa", banco: "Banco" };
+
+  function parseSms(from, body, ts) {
+    const b = String(body || "").replace(/\s+/g, " ").trim();
+    const low = (String(from || "") + " " + b).toLowerCase();
+    const r = (re) => b.match(new RegExp(re, "i"));
+    const wallet = /e-?mola/.test(low) ? "emola" : /m-?pesa/.test(low) ? "mpesa"
+      : /\b(bci|bim|millennium|standard ?bank|absa|moza|banco|fnb|nedbank|letshego|access bank|ecobank|socremo|bni)\b/.test(low) ? "banco" : null;
+    if (!wallet || !/\d\s?MT/i.test(b)) return null;
+    let kind = null, amount = null, party = "", content = "", m;
+    const failed = /falhou|sem sucesso|n[aã]o tens saldo|saldo insuficiente|n[aã]o foi poss[ií]vel/i.test(b);
+    if (failed) { /* não houve movimento: só o saldo conta */ }
+    else if ((m = r("levantamento de " + AMT)) || (m = r("Levanta(?:ste|u) " + AMT))) { kind = "withdraw"; amount = smsNum(m[1]); }
+    else if ((m = r("Compra(?:ste|u) (.+?) atrav[eé]s d[oe] M-?Pesa")) && (m = [m[0], m[1], r("no valor de " + AMT)]) && m[2]) {
+      kind = "out"; amount = smsNum(m[2][1]); party = "Vodacom"; content = m[1].trim();
+    }
+    else if ((m = r("Recebe(?:u|ste) " + AMT + " (?:de|do|da) (?:Nib\\s+)?\\+?[\\d ]+\\s*-\\s*(.+?)\\s+aos\\b"))) { kind = "in"; amount = smsNum(m[1]); party = m[2]; }
+    else if ((m = r("Recebe(?:u|ste) " + AMT + " de ([^,]+),\\s*(.+?)\\s+(?:as|às)\\b"))) { kind = "in"; amount = smsNum(m[1]); party = m[3]; }
+    else if ((m = r("Recebe(?:u|ste) " + AMT + "(?: de (.+?)(?:\\s+(?:as|às)\\b|[.,]))?"))) { kind = "in"; amount = smsNum(m[1]); party = m[2] || ""; }
+    else if ((m = r("Transferi(?:ste|u) " + AMT))) {
+      kind = "out"; amount = smsNum(m[1]);
+      const n = r("nome:\\s*(.+?)\\s+(?:as|às)\\b") || r("para\\s+\\+?\\d{6,}\\s*-\\s*(.+?)\\s+aos\\b") || r("para\\s+(\\+?\\d{6,})\\s+aos\\b");
+      party = n ? n[1] : "";
+    }
+    else if ((m = r("pagamento de " + AMT + "\\s+(?:para|a|ao|à)\\s+(.+?)(?:\\s+(?:as|às)\\b|\\.\\s|,|$)"))) { kind = "out"; amount = smsNum(m[1]); party = m[2]; }
+    else if ((m = r("(?:pagamento|compra|d[ée]bito|envio|enviou|envias?te|pagou|pagaste) de " + AMT))) { kind = "out"; amount = smsNum(m[1]); }
+    else if ((m = r("(?:cr[ée]dito|dep[óo]sito|recebimento) de " + AMT))) { kind = "in"; amount = smsNum(m[1]); }
+    const bal = r("saldo[^0-9]{0,30}?" + AMT);
+    // Sem movimento (falhou, consulta de saldo): serve só para acertar o saldo
+    if (!kind && bal && (failed || /confirmado|o teu saldo|o seu saldo/i.test(b))) { kind = "bal"; amount = 0; }
+    if (!kind || (kind !== "bal" && !amount)) return null;
+    const fee = r("Taxa(?: foi)?(?: de)?:?\\s*" + AMT);
+    const id = r("ID (?:Trans|da Transac[cç]?[aã]o)[:\\s]+([A-Za-z0-9.]+?)\\.(?:\\s|$)") || r("Confirmado ([A-Z0-9]{8,})\\b") || r("\\b([A-Z0-9]{8,}) confirmado");
+    const cont = r("Conte[uú]do:\\s*(.+?)\\.\\s");
+    const when = r("(\\d{2}):(\\d{2})(?::\\d{2})?\\s+(?:de\\s+)?(\\d{2})/(\\d{2})/(\\d{4})");
+    let d = isoOf(new Date(ts || Date.now())), t = ts || Date.now();
+    if (when) { d = `${when[5]}-${when[4]}-${when[3]}`; t = new Date(+when[5], +when[4] - 1, +when[3], +when[1], +when[2]).getTime(); }
+    else {
+      // M-Pesa: "aos 9/11/26 as 6:46 PM" ou "no dia 2/11/26 as 9:29 AM"
+      const w2 = r("(\\d{1,2})/(\\d{1,2})/(\\d{2,4})\\s+(?:as|às)\\s+(\\d{1,2}):(\\d{2})\\s*(AM|PM)?");
+      if (w2) {
+        let y = +w2[3]; if (y < 100) y += 2000;
+        let h = +w2[4]; if (w2[6]) { const pm = /pm/i.test(w2[6]); if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
+        const dt = new Date(y, +w2[2] - 1, +w2[1], h, +w2[5]);
+        if (!isNaN(dt)) { d = isoOf(dt); t = dt.getTime(); }
+      }
+    }
+    if (!/^\+?\d{6,}$/.test(party.trim())) party = party.replace(/^\d{6,}\s*,?\s*/, "");
+    party = party.trim();
+    return { wallet, kind, amount, fee: fee ? smsNum(fee[1]) : 0, bal: bal ? smsNum(bal[1]) : null, id: id ? id[1] : null,
+      party: party ? (/^\+?\d+$/.test(party) ? party : titleCase(party)) : "", content: content || (cont ? cont[1].trim() : ""), d, ts: t, body: b };
+  }
+
+  // Empresas conhecidas: categoria automática (pode ser mudada; a escolha passa a valer depois)
+  function knownParty(party, kind) {
+    if (kind !== "out") return null;
+    const n = normParty(party);
+    if (/\b(movitel|vodacom|tmcel|mcel|megas?|mb|gb|mins?|pacote)\b/.test(n)) return "cred";
+    if (/\b(edm|credelec|electricidade|fipag|aguas?)\b/.test(n)) return "energ";
+    if (/\b(farmacia|clinica|hospital)\b/.test(n)) return "saude";
+    if (/\b(shoprite|spar|pick n pay|game|mercado|supermercado)\b/.test(n)) return "merc";
+    return null;
+  }
+
+  function ensureTaxasCat() {
+    if (!catList("out").some((c) => c.id === "taxas")) catList("out").push({ id: "taxas", name: "Taxas", color: "#c08bff", icon: "bank" });
+  }
+  function balanceAt(id, ts) {
+    let b = walletById(id).adj || 0;
+    for (const e of data.entries) {
+      if ((e.ts || 0) > ts) continue;
+      if (e.t === "in" && e.w === id) b += e.v;
+      else if (e.t === "out" && e.w === id) b -= e.v;
+      else if (e.t === "tr") { if (e.w === id) b -= e.v; if (e.w2 === id) b += e.v; }
+      else if (e.t === "goal" && e.w === id) b -= e.v;
+    }
+    return b;
+  }
+  function applySms(p) {
+    const key = p.id || ("h" + Array.from(p.body).reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
+    if (data.smsSeen.includes(key)) return -1;
+    const w = walletById(p.wallet);
+    if (!wallets().some((x) => x.id === p.wallet)) return 0;
+    w.show = true;
+    const rule = p.party ? (data.smsRules[normParty(p.party)] || knownParty(p.party, p.kind)) : null;
+    const base = { d: p.d, ts: p.ts, w: p.wallet, auto: true, sms: key };
+    const note = p.party === "Vodacom" && p.content ? `${p.content} (M-Pesa)` : (p.party || p.content || "");
+    let n = 0;
+    if (p.kind === "bal") { /* só acerto de saldo */ }
+    else if (p.kind === "withdraw") {
+      data.entries.push({ id: uid(), t: "tr", v: p.amount, w2: "dinheiro", note: "Levantamento no agente", ...base }); n++;
+    } else {
+      const t = p.kind;
+      const cat = rule && catList(t).some((c) => c.id === rule) ? rule : (t === "in" ? "outent" : "outros");
+      data.entries.push({ id: uid(), t, v: p.amount, cat, note, party: p.party, review: !rule, ...base }); n++;
+    }
+    if (p.fee > 0) {
+      ensureTaxasCat();
+      data.entries.push({ id: uid(), t: "out", v: p.fee, cat: "taxas", note: `Taxa ${WALLET_LABEL[p.wallet] || ""}`.trim(), ...base, ts: p.ts + 1 }); n++;
+    }
+    if (p.bal != null) {
+      w.adj = (w.adj || 0) + (p.bal - balanceAt(p.wallet, p.ts + 1));
+      w.syncedAt = p.ts;
+    }
+    data.smsSeen.push(key);
+    if (data.smsSeen.length > 2000) data.smsSeen = data.smsSeen.slice(-1500);
+    return n;
+  }
+  // Recebe mensagens {from, body, ts} e cria os lançamentos. Devolve quantos movimentos entraram.
+  function processSms(list) {
+    const parsed = list.map((x) => parseSms(x.from, x.body, x.ts)).filter(Boolean).sort((a, b) => a.ts - b.ts);
+    let moves = 0, changed = false;
+    for (const p of parsed) { const k = applySms(p); if (k > 0) moves++; if (k >= 0) changed = true; }
+    if (changed) save();
+    return moves;
+  }
+  function pullSms(showToast = true) {
+    if (!android || !android.smsPendentes) return;
+    let list = [];
+    try { list = JSON.parse(android.smsPendentes() || "[]"); } catch (e) { list = []; }
+    if (!list.length) return;
+    const n = processSms(list);
+    try { android.smsLimpar(); } catch (e) { /* ignorar */ }
+    if (n) { renderView(); if (showToast) toast(`${n} movimento${n > 1 ? "s" : ""} lido${n > 1 ? "s" : ""} das SMS`, ["Ver", () => { location.hash = "#historico"; }]); }
+  }
+  const reviewList = () => data.entries.filter((e) => e.review).sort((a, b) => b.ts - a.ts);
+  window.__cadernetaSmsTeste = (list) => { const n = processSms(list); renderView(); return n; };
+
   // ================= Navegação =================
   const VIEWS = ["lancar", "resumo", "carteira", "historico", "ajustes"];
   let view = "lancar";
@@ -365,6 +508,10 @@
     // aviso de pagamentos fixos por confirmar
     const due = fixedDue();
     const nb = $("launchNotice"); nb.replaceChildren();
+    const rv = reviewList();
+    if (rv.length) nb.append(el("a", { class: "notice", href: "#historico", style: "margin-bottom:8px" },
+      el("span", {}, el("b", { text: `${rv.length} movimento${rv.length > 1 ? "s" : ""} das SMS` }), " por categorizar"),
+      el("span", { class: "link", text: "Ver" })));
     if (due.length) nb.append(el("a", { class: "notice", href: "#carteira" },
       el("span", {}, el("b", { text: `${due.length} pagamento${due.length > 1 ? "s" : ""} fixo${due.length > 1 ? "s" : ""}` }), ` por confirmar · ${fmt(due.reduce((a, f) => a + f.v, 0))}`),
       el("span", { class: "link", text: "Ver" })));
@@ -856,6 +1003,21 @@
       }
     }
     const box = $("histList"); box.replaceChildren();
+    const rv = reviewList();
+    if (rv.length) {
+      const p = el("section", { class: "panel review" }, el("h2", { class: "panel-title" }, el("span", { text: "Por categorizar" }), el("span", { class: "label", text: "lidos das SMS" })),
+        el("p", { class: "muted", text: "Toque para escolher a categoria. Da próxima vez, a mesma pessoa ou loja fica com a mesma categoria." }));
+      const wrap = el("div");
+      for (const e of rv.slice(0, 30)) {
+        const info = entryInfo(e);
+        wrap.append(el("button", { type: "button", class: "tx", onclick: () => editEntry(e) }, iconTile("tag", "#ffd25a"),
+          el("div", {}, el("div", { class: "t", text: info.title }), el("div", { class: "s", text: `${dayName(e.d)} · ${walletById(e.w).name}` })),
+          el("span", { class: "amt num" + info.cls, text: info.amount })));
+      }
+      p.append(wrap);
+      if (rv.length > 1) p.append(el("button", { type: "button", class: "btn small", text: "Manter todos como estão", onclick: () => { for (const e of rv) e.review = false; save(); renderView(); } }));
+      box.append(p);
+    }
     let items = histFilter ? list.filter((e) => filterKey(e) === histFilter) : list;
     if (!items.length) {
       box.append(el("div", { class: "panel empty" }, el("strong", { text: "Nada em " + monthName(viewMonth) }),
@@ -875,7 +1037,7 @@
         const sameDay = e.ts && e.d === isoOf(new Date(e.ts));
         wrap.append(el("button", { type: "button", class: "tx", onclick: () => editEntry(e) }, iconTile(info.icon, info.color),
           el("div", {}, el("div", { class: "t", text: info.title }),
-            el("div", { class: "s" }, sameDay ? el("span", { text: timeOf(e.ts) }) : null, el("span", { class: sameDay ? "dotsep" : "", text: info.sub + (e.fx ? " · fixo" : "") }))),
+            el("div", { class: "s" }, sameDay ? el("span", { text: timeOf(e.ts) }) : null, el("span", { class: sameDay ? "dotsep" : "", text: info.sub + (e.fx ? " · fixo" : "") + (e.auto ? " · SMS" : "") }))),
           el("span", { class: "amt num" + info.cls, text: info.amount })));
       }
       panel.append(wrap);
@@ -916,7 +1078,15 @@
         if (!val) return "Escreva um valor maior que zero, por exemplo 350 ou 12,50.";
         if (!v.d) return "Escolha a data.";
         Object.assign(e, { v: val, cat: v.cat, w: v.w, d: v.d, note: v.note.trim() });
-        save(); renderView(); toast("Lançamento atualizado");
+        let learned = 0;
+        if (e.review || e.party) {
+          e.review = false;
+          if (e.party) {
+            data.smsRules[normParty(e.party)] = v.cat;
+            for (const o of data.entries) if (o.review && o.t === e.t && normParty(o.party) === normParty(e.party)) { o.cat = v.cat; o.review = false; learned++; }
+          }
+        }
+        save(); renderView(); toast(learned ? `Atualizado. Mais ${learned} de ${e.party} ficaram em ${catById(e.t, v.cat).name}.` : "Lançamento atualizado");
       },
       onDelete: del
     });
@@ -977,6 +1147,25 @@
         el("div", { class: "setrow" }, el("span", { class: "muted", text: "Hora do aviso" }), time));
     } else remPanel.append(el("p", { class: "muted", text: "O lembrete funciona no app instalado (APK) para Android." }));
     body.append(remPanel);
+
+    // Leitura de SMS
+    const smsPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Ler SMS do e-Mola, M-Pesa e banco" }));
+    if (android && android.definirSms) {
+      let st = null; try { st = JSON.parse(android.estadoSms()); } catch (e) { st = null; }
+      const on = !!(st && st.ativo && st.permitido);
+      const sw = el("input", { type: "checkbox", id: "smsOn", "aria-label": "Ler SMS automaticamente" }); sw.checked = on;
+      sw.onchange = () => { data.settings.sms.on = sw.checked; save(); android.definirSms(sw.checked); if (!sw.checked) toast("Leitura de SMS desligada"); };
+      smsPanel.append(
+        el("p", { class: "muted", text: "Quando chega uma SMS de pagamento, envio, recebimento ou levantamento, a Caderneta cria o lançamento e acerta o saldo da carteira com o saldo real da mensagem. As mensagens são lidas só neste telemóvel; nada é enviado para fora." }),
+        el("label", { class: "switch" }, el("span", { text: "Ler SMS automaticamente" }), sw),
+        el("p", { class: "muted", text: "e-Mola e M-Pesa: reconhecidos. Bancos: leitura experimental (mande exemplos para melhorar)." }),
+        on ? el("button", { type: "button", class: "btn", text: "Importar SMS dos últimos 30 dias", onclick: () => {
+          let list = []; try { list = JSON.parse(android.lerSmsAntigas(30) || "[]"); } catch (e) { list = []; }
+          const n = processSms(list); renderView();
+          toast(n ? `${n} movimento${n > 1 ? "s" : ""} importado${n > 1 ? "s" : ""}. Veja-os em Histórico.` : "Não encontrei movimentos novos nas SMS.");
+        } }) : null);
+    } else smsPanel.append(el("p", { class: "muted", text: "Disponível no app instalado (APK) para Android." }));
+    body.append(smsPanel);
 
     // Carteiras
     const wPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Carteiras" }),
@@ -1089,7 +1278,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.2.0";
+  const APP_VERSION = "1.3.2";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if ($("formDlg").open) { $("formDlg").close(); return true; }
@@ -1103,6 +1292,13 @@
   if (!location.hash) history.replaceState(null, "", "#lancar");
   route();
   let lastDay = today();
+  window.__cadernetaPermissaoSms = (granted) => {
+    if (!granted) { data.settings.sms.on = false; save(); toast("Sem permissão para ler SMS, a leitura automática fica desligada."); }
+    else { toast("Leitura de SMS ativa. Pode importar as mensagens dos últimos 30 dias em Ajustes."); }
+    if (view === "ajustes") renderView();
+  };
+  pullSms();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) pullSms(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden && today() !== lastDay) { lastDay = today(); viewMonth = monthOf(lastDay); $("date").value = lastDay; renderView(); } });
 
   if (!IN_APK && "serviceWorker" in navigator && location.protocol !== "file:") {
