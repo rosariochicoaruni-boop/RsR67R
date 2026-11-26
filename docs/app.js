@@ -554,14 +554,22 @@
   // ================= Layouts (Aparência) =================
   const THEMES = {
     marinho: { name: "Marinho", desc: "Cabeçalho escuro em onda, botão Lançar redondo ao centro", sw: ["#0d1033", "#e9eff9", "#ffffff"], darkIcons: false, bar: "#0d1033" },
-    financas: { name: "Finanças", desc: "Claro, cartões em azul e ícones coloridos, botão + verde", sw: ["#2f54d6", "#34c38f", "#f3f5fa"], darkIcons: true, bar: "#ffffff" },
-    classico: { name: "Clássico", desc: "Cabeçalho índigo, quadrados brancos, barra flutuante", sw: ["#262e6e", "#29a8e0", "#f6f7fb"], darkIcons: false, bar: "#f6f7fb" }
+    financas: { name: "Finanças", desc: "Claro, cartões em azul e ícones coloridos, botão + verde", sw: ["#2f54d6", "#34c38f", "#f3f5fa"], darkIcons: true, navDark: true, bar: "#ffffff" },
+    classico: { name: "Clássico", desc: "Cabeçalho índigo, quadrados brancos, barra flutuante", sw: ["#262e6e", "#29a8e0", "#f6f7fb"], darkIcons: false, navDark: true, bar: "#f6f7fb" },
+    amarelo: { name: "Amarelo-noite", desc: "Fundo quase preto com destaques amarelos", sw: ["#151518", "#f7c325", "#2c2c31"], darkIcons: false, bar: "#1d1d21" },
+    projetos: { name: "Projetos", desc: "Branco e marinho, cartões azul-claro, + ao centro", sw: ["#12336b", "#eef3fc", "#ffffff"], darkIcons: true, bar: "#ffffff" },
+    oceano: { name: "Oceano", desc: "Cabeçalho em degradê azul-verde, botões em pílula", sw: ["#1e6ff1", "#3fd18a", "#eef6ff"], darkIcons: false, navDark: true, bar: "#ffffff" },
+    solidario: { name: "Solidário", desc: "Azul-royal com ciano e blocos com curvas", sw: ["#2b44b5", "#2ec6e8", "#ffffff"], darkIcons: false, bar: "#2b44b5" },
+    limpo: { name: "Limpo", desc: "Cinza-claro, ícones em círculos, banner azul", sw: ["#1453c4", "#f3f5f8", "#ffffff"], darkIcons: true, bar: "#ffffff" },
+    noite: { name: "Noite", desc: "Azul-noite com céu azul e cartão de vidro", sw: ["#070b1a", "#2f6bff", "#a8c3ff"], darkIcons: false, bar: "#090d20" },
+    ardosia: { name: "Ardósia", desc: "Azul-ardósia, cartões translúcidos, botão amarelo", sw: ["#24405f", "#f2b84b", "#e8e4ff"], darkIcons: false, bar: "#1b3350" }
   };
   function applyTheme() {
     const t = THEMES[data.settings.theme] ? data.settings.theme : "marinho";
     document.documentElement.dataset.tema = t;
     const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = THEMES[t].sw[0];
-    if (android && android.barras) { try { android.barras(THEMES[t].darkIcons, THEMES[t].bar); } catch (e) { /* ignorar */ } }
+    if (android && android.barras2) { try { android.barras2(THEMES[t].darkIcons, !!(THEMES[t].navDark ?? THEMES[t].darkIcons), THEMES[t].bar); } catch (e) { /* ignorar */ } }
+    else if (android && android.barras) { try { android.barras(THEMES[t].darkIcons, THEMES[t].bar); } catch (e) { /* ignorar */ } }
   }
   function setTheme(t) { data.settings.theme = t; save(); applyTheme(); renderView(); toast(`Layout ${THEMES[t].name} aplicado`); }
 
@@ -1607,7 +1615,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.7.0";
+  const APP_VERSION = "1.8.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if (!$("lock").hidden) return false;
