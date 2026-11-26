@@ -213,7 +213,20 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun estadoSms(): String = "{\"ativo\":${SmsLeitor.ativo(this@MainActivity)},\"permitido\":${smsPermitido()}}"
+        fun estadoSms(): String =
+            "{\"ativo\":${SmsLeitor.ativo(this@MainActivity)},\"permitido\":${smsPermitido()},\"aviso\":${SmsLeitor.aviso(this@MainActivity)}}"
+
+        @JavascriptInterface
+        fun definirSmsAviso(on: Boolean) = SmsLeitor.definirAviso(this@MainActivity, on)
+
+        /** Com código ativo: esconde o conteúdo na lista de apps recentes e impede capturas de ecrã. */
+        @JavascriptInterface
+        fun proteger(on: Boolean) {
+            runOnUiThread {
+                if (on) window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            }
+        }
 
         @JavascriptInterface
         fun smsPendentes(): String = SmsLeitor.pendentes(this@MainActivity)

@@ -13,13 +13,25 @@
 <link rel="preload" href="fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="app.css">
 </head>
-<body>
+<body class="locked">
+<div id="lock" hidden>
+  <span class="avatar" id="lockAvatar"></span>
+  <h2 id="lockTitle">Introduza o código</h2>
+  <div class="pin-dots" id="pinDots"></div>
+  <p id="lockMsg"></p>
+  <div class="lock-pad" id="lockPad">
+    <button type="button" data-p="1">1</button><button type="button" data-p="2">2</button><button type="button" data-p="3">3</button>
+    <button type="button" data-p="4">4</button><button type="button" data-p="5">5</button><button type="button" data-p="6">6</button>
+    <button type="button" data-p="7">7</button><button type="button" data-p="8">8</button><button type="button" data-p="9">9</button>
+    <button type="button" class="ghost" data-p="forgot">Esqueci</button><button type="button" data-p="0">0</button><button type="button" class="ghost" data-p="back" aria-label="Apagar"><svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg></button>
+  </div>
+</div>
 
 <main id="main">
   <!-- LANÇAR -->
   <section class="view view-launch" id="v-lancar" hidden>
     <header class="hello">
-      <div class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.2-3.3 3.9-5 7-5s5.8 1.7 7 5"/></svg></div>
+      <a class="avatar" id="helloAvatar" href="#ajustes" aria-label="Perfil"></a>
       <div class="hello-text"><span id="greeting">Olá</span><strong>!</strong></div>
       <div class="hello-today"><span>Gasto de hoje</span><div class="hero-amount" id="todayAmount"></div></div>
     </header>
