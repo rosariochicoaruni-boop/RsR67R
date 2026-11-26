@@ -219,6 +219,19 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun definirSmsAviso(on: Boolean) = SmsLeitor.definirAviso(this@MainActivity, on)
 
+        /** Layout escolhido: cor dos ícones das barras do sistema e fundo por trás da barra de navegação. */
+        @JavascriptInterface
+        fun barras(iconesEscuros: Boolean, cor: String) {
+            runOnUiThread {
+                val root = web.parent as? android.view.View ?: return@runOnUiThread
+                try { root.setBackgroundColor(android.graphics.Color.parseColor(cor)) } catch (e: IllegalArgumentException) { }
+                WindowCompat.getInsetsController(window, root).apply {
+                    isAppearanceLightStatusBars = iconesEscuros
+                    isAppearanceLightNavigationBars = iconesEscuros
+                }
+            }
+        }
+
         /** Com código ativo: esconde o conteúdo na lista de apps recentes e impede capturas de ecrã. */
         @JavascriptInterface
         fun proteger(on: Boolean) {
