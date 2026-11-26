@@ -85,6 +85,11 @@
     if (!Array.isArray(d.smsSeen)) d.smsSeen = [];
     if (!d.smsRules) d.smsRules = {};
     if (!s.sms) s.sms = { on: false };
+    // 1.4.0: levantamentos lidos das SMS passam a ficar "por dividir" (uma vez)
+    if (!s.splitMigrated) {
+      s.splitMigrated = true;
+      for (const e of d.entries) if (e.auto && e.t === "out" && e.cat === "levant" && !d.entries.some((x) => x.splitOf === e.id)) e.review = true;
+    }
     // 1.3.5: levantamentos contam como gasto e depósitos no agente como entrada
     for (const e of d.entries) {
       if (!e.auto || e.t !== "tr") continue;
@@ -235,7 +240,9 @@
 
   // ================= Formulário genérico (diálogo) =================
   let formState = null;
-  function openForm({ title, intro, fields, submit = "Guardar", onSubmit, onDelete, deleteLabel = "Apagar" }) {
+  function openForm({ title, intro, fields, submit = "Guardar", onSubmit, onDelete, deleteLabel = "Apagar", extra }) {
+    const ex = $("formExtra"); ex.hidden = !extra;
+    if (extra) { ex.textContent = extra.label; ex.onclick = () => { $("formDlg").close(); extra.onClick(); }; }
     $("formTitle").textContent = title;
     $("formIntro").hidden = !intro; $("formIntro").textContent = intro || "";
     $("formErr").textContent = "";
@@ -428,7 +435,7 @@
     }
     else if (p.kind === "withdraw") {
       ensureLevantCat();
-      data.entries.push({ id: uid(), t: "out", v: p.amount, cat: "levant", note: "Levantamento no agente", ...base }); n++;
+      data.entries.push({ id: uid(), t: "out", v: p.amount, cat: "levant", note: "Levantamento no agente", review: true, ...base }); n++;
     } else {
       const t = p.kind;
       const cat = rule && catList(t).some((c) => c.id === rule) ? rule : (t === "in" ? "outent" : "outros");
@@ -1058,12 +1065,13 @@
     const rv = reviewList();
     if (rv.length) {
       const p = el("section", { class: "panel review" }, el("h2", { class: "panel-title" }, el("span", { text: "Por categorizar" }), el("span", { class: "label", text: "lidos das SMS" })),
-        el("p", { class: "muted", text: "Toque para escolher a categoria. Da próxima vez, a mesma pessoa ou loja fica com a mesma categoria." }));
+        el("p", { class: "muted", text: "Toque para escolher a categoria. Os levantamentos podem ser divididos por várias categorias (ex.: Transporte e Alimentação)." }));
       const wrap = el("div");
       for (const e of rv.slice(0, 30)) {
         const info = entryInfo(e);
-        wrap.append(el("button", { type: "button", class: "tx", onclick: () => editEntry(e) }, iconTile("tag", "#ffd25a"),
-          el("div", {}, el("div", { class: "t", text: info.title }), el("div", { class: "s", text: `${dayName(e.d)} · ${walletById(e.w).name}` })),
+        const isSplit = e.cat === "levant";
+        wrap.append(el("button", { type: "button", class: "tx", onclick: () => (isSplit ? openSplit(e) : editEntry(e)) }, iconTile(isSplit ? "cash" : "tag", "#ffd25a"),
+          el("div", {}, el("div", { class: "t", text: info.title }), el("div", { class: "s" }, `${dayName(e.d)} · ${walletById(e.w).name}`, isSplit ? el("span", { class: "tag-split", text: " · por dividir" }) : null)),
           el("span", { class: "amt num" + info.cls, text: info.amount })));
       }
       p.append(wrap);
@@ -1097,6 +1105,71 @@
     }
   }
 
+  // ================= Dividir um gasto (ex.: levantamento) por categorias =================
+  function openSplit(e) {
+    const cats = catList("out").filter((c) => c.id !== e.cat);
+    const total = e.v;
+    $("formExtra").hidden = true;
+    $("formTitle").textContent = e.cat === "levant" ? "Dividir levantamento" : "Dividir gasto";
+    $("formIntro").hidden = false;
+    $("formIntro").textContent = `${fmt(total)} · ${walletById(e.w).name} · ${dayName(e.d)}. Diga em que foi gasto o dinheiro. O que ficar por dividir continua em ${catById("out", e.cat).name} e pode dividir mais tarde.`;
+    $("formErr").textContent = "";
+    $("formDelete").hidden = true;
+    $("formSubmit").textContent = "Guardar divisão";
+    const box = $("formFields"); box.replaceChildren();
+    const rows = el("div", { class: "stack" });
+    const left = el("div", { class: "split-left" });
+    const valueOf = (i) => parseMoney(i.value) || 0;
+    const update = () => {
+      const used = [...rows.querySelectorAll("input")].reduce((a, i) => a + valueOf(i), 0);
+      const rest = total - used;
+      left.classList.toggle("over", rest < 0);
+      left.replaceChildren(el("span", { text: rest < 0 ? "Passou o valor do levantamento em" : `Fica em ${catById("out", e.cat).name}` }), el("b", { text: fmt(Math.abs(rest)) }));
+      return rest;
+    };
+    const addRow = (catId, val) => {
+      const sel = el("select", { "aria-label": "Categoria" });
+      for (const c of cats) sel.append(el("option", { value: c.id, text: c.name }));
+      if (catId && cats.some((c) => c.id === catId)) sel.value = catId;
+      const inp = el("input", { inputmode: "decimal", autocomplete: "off", placeholder: "0", "aria-label": "Valor (MT)" });
+      if (val) inp.value = fmtPlain(val);
+      inp.addEventListener("input", update);
+      const rm = el("button", { type: "button", class: "btn icon", "aria-label": "Tirar esta linha", text: "✕" });
+      const row = el("div", { class: "split-row" }, sel, inp, rm);
+      rm.onclick = () => { row.remove(); update(); };
+      rows.append(row);
+      return inp;
+    };
+    addRow("transp"); addRow("alim");
+    const actions = el("div", { class: "split-actions" },
+      el("button", { type: "button", class: "btn small", text: "+ Outra categoria", onclick: () => { addRow(cats[0] && cats[0].id).focus(); update(); } }),
+      el("button", { type: "button", class: "btn small", text: "Pôr o resto na última", onclick: () => {
+        const ins = [...rows.querySelectorAll("input")]; if (!ins.length) return;
+        const last = ins[ins.length - 1]; const rest = update(); if (rest > 0) { last.value = fmtPlain(valueOf(last) + rest); update(); }
+      } }));
+    box.append(rows, actions, left);
+    update();
+    formState = {
+      inputs: {},
+      onSubmit: () => {
+        const parts = [...rows.querySelectorAll(".split-row")].map((r) => ({ cat: r.querySelector("select").value, v: parseMoney(r.querySelector("input").value) || 0 })).filter((x) => x.v > 0);
+        if (!parts.length) return "Escreva pelo menos um valor, por exemplo 200 em Transporte.";
+        const used = parts.reduce((a, x) => a + x.v, 0);
+        if (used > total) return `A soma (${fmt(used)}) passa o valor de ${fmt(total)}.`;
+        const warns = [];
+        const before = {}; for (const x of parts) if (!(x.cat in before)) before[x.cat] = catSpent(x.cat, monthOf(e.d));
+        parts.forEach((x, i) => data.entries.push({ id: uid(), t: "out", v: x.v, cat: x.cat, w: e.w, d: e.d, ts: (e.ts || Date.now()) + i + 1, note: e.note || "Levantamento", splitOf: e.id, auto: e.auto }));
+        for (const c of Object.keys(before)) { const w = limitWarning(catById("out", c), monthOf(e.d), before[c]); if (w) warns.push(w); }
+        const rest = total - used;
+        if (rest > 0) { e.v = rest; e.review = true; }
+        else data.entries = data.entries.filter((x) => x.id !== e.id);
+        save(); renderView();
+        toast((rest > 0 ? `Dividido. Ficam ${fmt(rest)} por dividir.` : "Levantamento dividido.") + (warns.length ? " " + warns.join(" ") : ""), null, warns.length ? 7000 : 0);
+      }
+    };
+    $("formDlg").showModal();
+  }
+
   function editEntry(e) {
     const ws = usedWallets().map((w) => [w.id, w.name]);
     if (!ws.some(([id]) => id === e.w)) ws.push([e.w, walletById(e.w).name]);
@@ -1118,6 +1191,7 @@
     if (!cats.some(([id]) => id === e.cat)) cats.push([e.cat, "Sem categoria"]);
     openForm({
       title: e.t === "out" ? "Editar gasto" : "Editar entrada",
+      extra: e.t === "out" && e.v > 1 ? { label: "Dividir", onClick: () => openSplit(e) } : null,
       fields: [
         { id: "v", label: "Valor (MT)", type: "money", value: fmtPlain(e.v) },
         { id: "cat", label: "Categoria", type: "select", options: cats, value: e.cat },
@@ -1331,7 +1405,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.3.5";
+  const APP_VERSION = "1.4.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if ($("formDlg").open) { $("formDlg").close(); return true; }
