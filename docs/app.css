@@ -677,3 +677,43 @@ html[data-tema="ardosia"] .toast { background: #e8e4ff; color: #24405f; }
 html[data-tema="ardosia"] .toast button { background: #24405f; color: #fff; }
 /* tecla + com a cor principal em todos os layouts */
 html[data-tema="projetos"] .keypad .plus, html[data-tema="limpo"] .keypad .plus, html[data-tema="noite"] .keypad .plus { background: var(--navy); color: #fff; }
+
+/* =====================================================================
+   ESCURO — modo escuro clássico: cinzentos neutros, texto claro, azul suave
+   ===================================================================== */
+html[data-tema="escuro"] {
+  --navy: #8ab4f8; --navy-2: #a6c6fa; --bg: #121212; --card: #1e1e1e; --field: #2a2a2a; --line: #2f2f2f;
+  --ink: #e8e8e8; --muted: #a0a0a0; --dim: rgba(255,255,255,.45); --accent: #8ab4f8; --soft: #262626;
+  --out: #f28b82; --in: #81c995; --warn: #fdd663;
+  --shadow: none;
+  --on-primary: #10213f; --tile: #2a2a2a; --tile-ink: #8ab4f8;
+  --head-bg: none; --head-ink: #e8e8e8; --head-pill: #1e1e1e; --head-pill-line: #2f2f2f;
+  --tabs-bg: #1a1a1a; --tabs-ink: #9a9a9a; --tabs-active: #8ab4f8;
+  --center-bg: #8ab4f8; --center-ink: #10213f; --center-ring: #121212;
+  --lock-bg: #121212;
+  color-scheme: dark;
+}
+html[data-tema="escuro"] .panel, html[data-tema="escuro"] .tile, html[data-tema="escuro"] .glass-card, html[data-tema="escuro"] .wallet-card, html[data-tema="escuro"] .notice { border: 1px solid var(--line); }
+html[data-tema="escuro"] .entry-total, html[data-tema="escuro"] .bank-number { color: var(--ink); }
+html[data-tema="escuro"] .btn { background: transparent; color: var(--accent); border-color: #4a4a4a; }
+html[data-tema="escuro"] .btn.primary { background: var(--accent); border-color: var(--accent); color: #10213f; }
+html[data-tema="escuro"] .btn.danger-outline { color: var(--out); border-color: var(--out); }
+html[data-tema="escuro"] .btn.danger { background: var(--out); color: #2b0d0b; }
+html[data-tema="escuro"] .keypad button { background: var(--card); color: var(--ink); box-shadow: none; border: 1px solid var(--line); }
+html[data-tema="escuro"] .keypad .fn { background: var(--field); }
+html[data-tema="escuro"] .keypad .plus { background: var(--accent); color: #10213f; border-color: var(--accent); }
+html[data-tema="escuro"] .chip { background: var(--card); color: var(--ink); box-shadow: none; border: 1px solid var(--line); }
+html[data-tema="escuro"] .chip[aria-pressed="true"] { border-color: var(--accent); }
+html[data-tema="escuro"] .nag { background: #2b2716; border-color: #4d4420; color: #f1e3a6; }
+html[data-tema="escuro"] .split-left.over, html[data-tema="escuro"] .meter.over { background: #3a2321; }
+html[data-tema="escuro"] .meter.full { background: #1f3326; }
+html[data-tema="escuro"] .hello .avatar { background: #2a2a2a; border-color: #3a3a3a; }
+html[data-tema="escuro"] #lock .avatar { background: #2a2a2a; color: var(--ink); border-color: #3a3a3a; }
+html[data-tema="escuro"] #lock .avatar svg { stroke: var(--ink); }
+html[data-tema="escuro"] .lock-pad button { border-color: #3a3a3a; }
+html[data-tema="escuro"] .lock-pad button:active { background: var(--accent); color: #10213f; }
+html[data-tema="escuro"] .tabs { border-radius: 0; border-top: 1px solid var(--line); }
+html[data-tema="escuro"] .toast { background: #e8e8e8; color: #121212; }
+html[data-tema="escuro"] .toast button { background: #121212; color: #e8e8e8; }
+html[data-tema="escuro"] dialog { border: 1px solid var(--line); }
+html[data-tema="escuro"] select option { background: #1e1e1e; color: #e8e8e8; }

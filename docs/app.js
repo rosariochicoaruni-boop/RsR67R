@@ -562,6 +562,7 @@
     solidario: { name: "Solidário", desc: "Azul-royal com ciano e blocos com curvas", sw: ["#2b44b5", "#2ec6e8", "#ffffff"], darkIcons: false, bar: "#2b44b5" },
     limpo: { name: "Limpo", desc: "Cinza-claro, ícones em círculos, banner azul", sw: ["#1453c4", "#f3f5f8", "#ffffff"], darkIcons: true, bar: "#ffffff" },
     noite: { name: "Noite", desc: "Azul-noite com céu azul e cartão de vidro", sw: ["#070b1a", "#2f6bff", "#a8c3ff"], darkIcons: false, bar: "#090d20" },
+    escuro: { name: "Escuro", desc: "Modo escuro: cinzentos neutros e texto claro, descansa a vista", sw: ["#121212", "#8ab4f8", "#2a2a2a"], darkIcons: false, bar: "#1a1a1a" },
     ardosia: { name: "Ardósia", desc: "Azul-ardósia, cartões translúcidos, botão amarelo", sw: ["#24405f", "#f2b84b", "#e8e4ff"], darkIcons: false, bar: "#1b3350" }
   };
   function applyTheme() {
@@ -1615,7 +1616,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.8.0";
+  const APP_VERSION = "1.9.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if (!$("lock").hidden) return false;
