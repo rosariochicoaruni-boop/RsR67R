@@ -85,6 +85,14 @@
     if (!Array.isArray(d.smsSeen)) d.smsSeen = [];
     if (!d.smsRules) d.smsRules = {};
     if (!s.sms) s.sms = { on: false };
+    // 1.3.5: levantamentos contam como gasto e depósitos no agente como entrada
+    for (const e of d.entries) {
+      if (!e.auto || e.t !== "tr") continue;
+      if (e.note === "Levantamento no agente") {
+        if (!d.cats.out.some((c) => c.id === "levant")) d.cats.out.push({ id: "levant", name: "Levantamentos", color: "#7fd8c0", icon: "cash" });
+        e.t = "out"; e.cat = "levant"; delete e.w2;
+      } else if (e.note === "Depósito no agente") { e.t = "in"; e.cat = "outent"; e.w = e.w2; delete e.w2; }
+    }
     // versão 1.0/1.1: forma de pagamento em texto -> carteira
     for (const e of d.entries) {
       if (!e.w) { const w = s.wallets.find((x) => x.name === e.pay); e.w = w ? w.id : "dinheiro"; }
@@ -344,7 +352,7 @@
     else if ((m = r("(?:cr[ée]dito|dep[óo]sito|recebimento) de " + AMT))) { kind = "in"; amount = smsNum(m[1]); }
     const bal = r("saldo[^0-9]{0,30}?" + AMT);
     // Sem movimento (falhou, consulta de saldo): serve só para acertar o saldo
-    if (!kind && bal && (failed || /confirmado|o teu saldo|o seu saldo/i.test(b))) { kind = "bal"; amount = 0; }
+    if (!kind && bal) { kind = "bal"; amount = 0; }
     if (!kind || (kind !== "bal" && !amount)) return null;
     const fee = r("Taxa(?: foi)?(?: de)?:?\\s*" + AMT);
     const id = r("ID (?:Trans|da Transac[cç]?[aã]o)[:\\s]+([A-Za-z0-9.]+?)\\.(?:\\s|$)") || r("Confirmado ([A-Z0-9]{8,})\\b") || r("\\b([A-Z0-9]{8,}) confirmado");
@@ -379,6 +387,9 @@
     return null;
   }
 
+  function ensureLevantCat() {
+    if (!catList("out").some((c) => c.id === "levant")) catList("out").push({ id: "levant", name: "Levantamentos", color: "#7fd8c0", icon: "cash" });
+  }
   function ensureTaxasCat() {
     if (!catList("out").some((c) => c.id === "taxas")) catList("out").push({ id: "taxas", name: "Taxas", color: "#c08bff", icon: "bank" });
   }
@@ -413,10 +424,11 @@
     }
     if (p.kind === "bal") { /* só acerto de saldo */ }
     else if (p.kind === "deposit") {
-      data.entries.push({ id: uid(), t: "tr", v: p.amount, note: "Depósito no agente", ...base, w: "dinheiro", w2: p.wallet }); n++;
+      data.entries.push({ id: uid(), t: "in", v: p.amount, cat: "outent", note: "Depósito no agente", ...base }); n++;
     }
     else if (p.kind === "withdraw") {
-      data.entries.push({ id: uid(), t: "tr", v: p.amount, w2: "dinheiro", note: "Levantamento no agente", ...base }); n++;
+      ensureLevantCat();
+      data.entries.push({ id: uid(), t: "out", v: p.amount, cat: "levant", note: "Levantamento no agente", ...base }); n++;
     } else {
       const t = p.kind;
       const cat = rule && catList(t).some((c) => c.id === rule) ? rule : (t === "in" ? "outent" : "outros");
@@ -433,14 +445,18 @@
     }
     if (p.bal != null) {
       w.adj = (w.adj || 0) + (p.bal - balanceAt(p.wallet, p.ts + 1));
-      w.syncedAt = p.ts;
+      w.syncedAt = p.ts; w.syncedBal = p.bal;
+      data.settings.walletsSet = true;
+      syncedNow[p.wallet] = p.bal;
     }
     data.smsSeen.push(key);
     if (data.smsSeen.length > 2000) data.smsSeen = data.smsSeen.slice(-1500);
     return n;
   }
   // Recebe mensagens {from, body, ts} e cria os lançamentos. Devolve quantos movimentos entraram.
+  let syncedNow = {};
   function processSms(list) {
+    syncedNow = {};
     const parsed = list.map((x) => parseSms(x.from, x.body, x.ts)).filter(Boolean).sort((a, b) => a.ts - b.ts);
     let moves = 0, changed = false;
     for (const p of parsed) { const k = applySms(p); if (k > 0) moves++; if (k >= 0) changed = true; }
@@ -454,7 +470,11 @@
     if (!list.length) return;
     const n = processSms(list);
     try { android.smsLimpar(); } catch (e) { /* ignorar */ }
-    if (n) { renderView(); if (showToast) toast(`${n} movimento${n > 1 ? "s" : ""} lido${n > 1 ? "s" : ""} das SMS`, ["Ver", () => { location.hash = "#historico"; }]); }
+    const synced = Object.entries(syncedNow).map(([id, b]) => `${walletById(id).name} ${fmt(b)}`).join(", ");
+    if (n || synced) renderView();
+    if (!showToast) return;
+    if (n) toast(`${n} movimento${n > 1 ? "s" : ""} lido${n > 1 ? "s" : ""} das SMS${synced ? ` · saldo: ${synced}` : ""}`, ["Ver", () => { location.hash = "#historico"; }]);
+    else if (synced) toast(`Saldo sincronizado: ${synced}`);
   }
   const reviewList = () => data.entries.filter((e) => e.review).sort((a, b) => b.ts - a.ts);
   window.__cadernetaSmsTeste = (list) => { const n = processSms(list); renderView(); return n; };
@@ -775,11 +795,15 @@
     ws.forEach((w, i) => {
       const b = walletBalance(w.id);
       row.append(el("button", { type: "button", class: "glass-card wallet-card" + (i % 3 === 1 ? " alt" : i % 3 === 2 ? " alt2" : ""), onclick: () => adjustWallet(w) },
-        el("div", { class: "wc-top" }, svg(w.icon), el("span", { class: "wc-hint", text: "Acertar" })),
+        el("div", { class: "wc-top" }, svg(w.icon), el("span", { class: "wc-hint", text: w.syncedAt ? `✓ Real · ${isoOf(new Date(w.syncedAt)) === today() ? timeOf(w.syncedAt) : isoOf(new Date(w.syncedAt)).slice(8) + "/" + isoOf(new Date(w.syncedAt)).slice(5, 7)}` : (["mpesa", "emola"].includes(w.id) && data.settings.sms.on ? "Consulte o saldo" : "Acertar") })),
         el("div", {}, el("div", { class: "wc-name", text: w.name }), el("div", { class: "wc-bal num" + (b < 0 ? " neg" : ""), text: fmt(b) }))));
     });
     body.append(row);
-    if (!data.settings.walletsSet && data.entries.length) {
+    const notSynced = ws.filter((w) => ["mpesa", "emola"].includes(w.id) && !w.syncedAt);
+    if (data.settings.sms.on && notSynced.length) {
+      body.append(el("div", { class: "nag" },
+        el("span", { text: `Para sincronizar ${notSynced.map((w) => w.name).join(" e ")}, consulte o saldo no telemóvel (menu "Consultar saldo"). Quando chegar a SMS com o saldo, a Caderneta acerta-o sozinha.` })));
+    } else if (!data.settings.walletsSet && data.entries.length) {
       body.append(el("div", { class: "nag" },
         el("span", { text: "Os saldos começam a contar só a partir dos lançamentos. Toque em cada carteira e escreva quanto tem hoje para ficarem certos." }),
         el("button", { type: "button", class: "btn small", text: "Já está certo", onclick: () => { data.settings.walletsSet = true; save(); renderView(); } })));
@@ -1187,6 +1211,7 @@
         el("p", { class: "muted", text: "Quando chega uma SMS de pagamento, envio, recebimento ou levantamento, a Caderneta cria o lançamento e acerta o saldo da carteira com o saldo real da mensagem. As mensagens são lidas só neste telemóvel; nada é enviado para fora." }),
         el("label", { class: "switch" }, el("span", { text: "Ler SMS automaticamente" }), sw),
         el("p", { class: "muted", text: "e-Mola e M-Pesa: reconhecidos. Bancos: leitura experimental (mande exemplos para melhorar)." }),
+        on ? el("p", { class: "muted" }, el("b", { text: "Primeiro uso: " }), "consulte o saldo do M-Pesa e do e-Mola no telemóvel. A SMS com o saldo sincroniza cada carteira sozinha, sem escrever nada.") : null,
         on ? el("button", { type: "button", class: "btn", text: "Importar SMS dos últimos 30 dias", onclick: () => {
           let list = []; try { list = JSON.parse(android.lerSmsAntigas(30) || "[]"); } catch (e) { list = []; }
           const n = processSms(list); renderView();
@@ -1306,7 +1331,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.3.4";
+  const APP_VERSION = "1.3.5";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if ($("formDlg").open) { $("formDlg").close(); return true; }
