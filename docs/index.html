@@ -5,36 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Caderneta de Gastos</title>
 <meta name="description" content="Anote os seus gastos em meticais e veja para onde vai o dinheiro.">
-<meta name="theme-color" content="#0b6b53">
+<meta name="theme-color" content="#070b1a">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preload" href="fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<header class="appbar">
-  <h1 id="viewTitle">Lançar</h1>
-  <span class="appbar-sub num" id="appbarSub"></span>
-</header>
 
-<main>
+<main id="main">
   <!-- LANÇAR -->
   <section class="view view-launch" id="v-lancar" hidden>
-    <div class="seg" role="group" aria-label="Tipo de lançamento">
-      <button type="button" id="typeOut" class="out" aria-pressed="true">Gasto</button>
-      <button type="button" id="typeIn" class="in" aria-pressed="false">Entrada</button>
+    <header class="hello">
+      <div class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.2-3.3 3.9-5 7-5s5.8 1.7 7 5"/></svg></div>
+      <div class="hello-text"><span id="greeting">Olá</span><strong>!</strong></div>
+      <div class="hello-today"><span>Gasto de hoje</span><div class="hero-amount" id="todayAmount"></div></div>
+    </header>
+
+    <div id="launchNotice"></div>
+
+    <div class="glass-card entry-card" id="display" aria-live="polite">
+      <div class="entry-top">
+        <div class="seg" role="group" aria-label="Tipo de lançamento">
+          <button type="button" id="typeOut" aria-pressed="true">Gasto</button>
+          <button type="button" id="typeIn" aria-pressed="false">Entrada</button>
+        </div>
+        <button type="button" class="entry-meta" id="moreToggle" aria-controls="more" aria-expanded="false"><span id="moreSummary">Dinheiro · hoje</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      </div>
+      <div class="entry-expr" id="expr">&nbsp;</div>
+      <div class="entry-total"><span id="total">0</span><span class="cur">MT</span></div>
+      <div class="entry-hint" id="hint">Digite o valor e toque na categoria</div>
     </div>
 
-    <div class="display" id="display" aria-live="polite">
-      <div class="expr num" id="expr">&nbsp;</div>
-      <div class="total"><span class="num" id="total">0</span> <span class="cur">MT</span></div>
-      <div class="hint" id="hint">Digite o valor e toque na categoria</div>
-    </div>
-
-    <details class="more" id="more">
-      <summary><span id="moreSummary">Dinheiro · hoje</span><span class="more-cta">Mais detalhes</span></summary>
+    <details class="panel more" id="more">
+      <summary hidden>Mais detalhes</summary>
       <div class="more-body">
-        <div class="chips" id="payChips" role="group" aria-label="Forma de pagamento"></div>
+        <div class="field"><span>Carteira</span><div class="chips" id="payChips" role="group" aria-label="Carteira"></div></div>
         <div class="row2">
           <label class="field"><span>Nota (opcional)</span><input id="note" maxlength="60" autocomplete="off" placeholder="Ex.: pão e leite"></label>
           <label class="field"><span>Data</span><input id="date" type="date"></label>
@@ -42,10 +50,13 @@
       </div>
     </details>
 
-    <div class="cats" id="catGrid" aria-label="Categorias"></div>
+    <section class="panel">
+      <h2 class="panel-title">Categorias</h2>
+      <div class="actions-grid" id="catGrid"></div>
+    </section>
 
     <div class="keypad" id="keypad">
-      <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button><button type="button" data-k="back" class="fn" aria-label="Apagar último dígito">⌫</button>
+      <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button><button type="button" data-k="back" class="fn" aria-label="Apagar último dígito"><svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg></button>
       <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button><button type="button" data-k="+" class="fn plus" aria-label="Somar outro valor">+</button>
       <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button><button type="button" data-k="clear" class="fn" aria-label="Limpar">C</button>
       <button type="button" data-k="000">000</button><button type="button" data-k="0" class="wide">0</button><button type="button" data-k=",">,</button>
@@ -54,55 +65,63 @@
 
   <!-- RESUMO -->
   <section class="view" id="v-resumo" hidden>
-    <div class="monthnav">
-      <button type="button" class="mbtn" data-mdelta="-1" aria-label="Mês anterior">‹</button>
-      <strong class="mlabel"></strong>
-      <button type="button" class="mbtn" data-mdelta="1" aria-label="Mês seguinte">›</button>
-    </div>
-    <div id="backupNag"></div>
+    <header class="page-head">
+      <h1>Resumo</h1>
+      <div class="monthnav">
+        <button type="button" class="mbtn" data-mdelta="-1" aria-label="Mês anterior"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <strong class="mlabel"></strong>
+        <button type="button" class="mbtn" data-mdelta="1" aria-label="Mês seguinte"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+    </header>
     <div id="resumoBody" class="stack"></div>
+  </section>
+
+  <!-- CARTEIRA -->
+  <section class="view" id="v-carteira" hidden>
+    <header class="page-head"><h1>Carteira</h1></header>
+    <div class="stack" id="carteiraBody"></div>
   </section>
 
   <!-- HISTÓRICO -->
   <section class="view" id="v-historico" hidden>
-    <div class="monthnav">
-      <button type="button" class="mbtn" data-mdelta="-1" aria-label="Mês anterior">‹</button>
-      <strong class="mlabel"></strong>
-      <button type="button" class="mbtn" data-mdelta="1" aria-label="Mês seguinte">›</button>
-    </div>
+    <header class="page-head">
+      <h1>Histórico</h1>
+      <div class="monthnav">
+        <button type="button" class="mbtn" data-mdelta="-1" aria-label="Mês anterior"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <strong class="mlabel"></strong>
+        <button type="button" class="mbtn" data-mdelta="1" aria-label="Mês seguinte"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+    </header>
     <div class="chips scroll" id="histFilter"></div>
-    <div id="histList"></div>
+    <div id="histList" class="stack"></div>
   </section>
 
   <!-- AJUSTES -->
   <section class="view" id="v-ajustes" hidden>
+    <header class="page-head"><h1>Ajustes</h1></header>
     <div class="stack" id="ajustesBody"></div>
   </section>
 </main>
 
 <nav class="tabs" aria-label="Secções">
-  <a href="#lancar" data-tab="lancar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Lançar</span></a>
-  <a href="#resumo" data-tab="resumo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg><span>Resumo</span></a>
-  <a href="#historico" data-tab="historico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg><span>Histórico</span></a>
-  <a href="#ajustes" data-tab="ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>Ajustes</span></a>
+  <a href="#lancar" data-tab="lancar"><span class="tab-ic"><svg viewBox="0 0 24 24"><path d="M4 10.5L12 4l8 6.5V20h-5v-6h-6v6H4z"/></svg></span><span>Lançar</span></a>
+  <a href="#resumo" data-tab="resumo"><span class="tab-ic"><svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-6"/></svg></span><span>Resumo</span></a>
+  <a href="#carteira" data-tab="carteira"><span class="tab-ic"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10.5h18M7 15h4"/></svg></span><span>Carteira</span></a>
+  <a href="#historico" data-tab="historico"><span class="tab-ic"><svg viewBox="0 0 24 24"><path d="M7 7h13M4 12h13M7 17h13"/><path d="M4 7l1.5-1.5M20 12l-1.5 1.5"/></svg></span><span>Histórico</span></a>
+  <a href="#ajustes" data-tab="ajustes"><span class="tab-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.2-3.3 3.9-5 7-5s5.8 1.7 7 5"/></svg></span><span>Ajustes</span></a>
 </nav>
 
-<dialog id="editDlg" aria-labelledby="editTitle">
-  <form method="dialog" id="editForm" novalidate>
-    <h2 id="editTitle">Editar lançamento</h2>
-    <label class="field"><span>Valor (MT)</span><input id="eValue" inputmode="decimal" autocomplete="off"></label>
-    <label class="field"><span>Categoria</span><select id="eCat"></select></label>
-    <div class="row2">
-      <label class="field"><span>Pagamento</span><select id="ePay"></select></label>
-      <label class="field"><span>Data</span><input id="eDate" type="date"></label>
-    </div>
-    <label class="field"><span>Nota</span><input id="eNote" maxlength="60" autocomplete="off"></label>
-    <p class="err" id="eErr" role="alert"></p>
+<dialog id="formDlg" aria-labelledby="formTitle">
+  <form method="dialog" id="formForm" novalidate>
+    <h2 id="formTitle"></h2>
+    <p class="muted" id="formIntro" hidden></p>
+    <div class="stack" id="formFields"></div>
+    <p class="err" id="formErr" role="alert"></p>
     <div class="dlg-actions">
-      <button type="button" class="btn danger-outline" id="eDelete">Apagar</button>
+      <button type="button" class="btn danger-outline" id="formDelete" hidden>Apagar</button>
       <span class="spacer"></span>
-      <button type="button" class="btn" id="eCancel">Fechar</button>
-      <button type="submit" class="btn primary" id="eSave">Guardar</button>
+      <button type="button" class="btn" id="formCancel">Fechar</button>
+      <button type="submit" class="btn primary" id="formSubmit">Guardar</button>
     </div>
   </form>
 </dialog>

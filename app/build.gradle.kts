@@ -14,8 +14,8 @@ android {
         applicationId = "mz.caderneta.gastos"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     // Chave própria da Caderneta: assim cada nova versão instala por cima da anterior sem perder dados.
