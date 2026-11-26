@@ -1,6 +1,6 @@
 // Guarda o app no telemóvel para funcionar sem internet.
 // Ao publicar uma nova versão, aumente o número em CACHE.
-const CACHE = "caderneta-v1.7.0";
+const CACHE = "caderneta-v1.9.0";
 const FILES = ["./", "./index.html", "./app.css", "./app.js", "./manifest.webmanifest",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/maskable-512.png",
   "./fonts/poppins-400.woff2", "./fonts/poppins-600.woff2", "./fonts/poppins-700.woff2"];

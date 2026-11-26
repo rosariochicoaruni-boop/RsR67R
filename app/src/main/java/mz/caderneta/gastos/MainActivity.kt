@@ -232,6 +232,19 @@ class MainActivity : Activity() {
             }
         }
 
+        /** Como barras(), mas com cor dos ícones separada para a barra de estado e a de navegação. */
+        @JavascriptInterface
+        fun barras2(estadoEscuros: Boolean, navEscuros: Boolean, cor: String) {
+            runOnUiThread {
+                val root = web.parent as? android.view.View ?: return@runOnUiThread
+                try { root.setBackgroundColor(android.graphics.Color.parseColor(cor)) } catch (e: IllegalArgumentException) { }
+                WindowCompat.getInsetsController(window, root).apply {
+                    isAppearanceLightStatusBars = estadoEscuros
+                    isAppearanceLightNavigationBars = navEscuros
+                }
+            }
+        }
+
         /** Com código ativo: esconde o conteúdo na lista de apps recentes e impede capturas de ecrã. */
         @JavascriptInterface
         fun proteger(on: Boolean) {
