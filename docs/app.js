@@ -333,6 +333,17 @@
       party: party ? titleCase(party) : "", content: cont ? cont[1].trim() : "", d, ts: t, body: b };
   }
 
+  // Empresas conhecidas: categoria automática (pode ser mudada; a escolha passa a valer depois)
+  function knownParty(party, kind) {
+    if (kind !== "out") return null;
+    const n = normParty(party);
+    if (/\b(movitel|vodacom|tmcel|mcel)\b/.test(n)) return "cred";
+    if (/\b(edm|credelec|electricidade|fipag|aguas?)\b/.test(n)) return "energ";
+    if (/\b(farmacia|clinica|hospital)\b/.test(n)) return "saude";
+    if (/\b(shoprite|spar|pick n pay|game|mercado|supermercado)\b/.test(n)) return "merc";
+    return null;
+  }
+
   function ensureTaxasCat() {
     if (!catList("out").some((c) => c.id === "taxas")) catList("out").push({ id: "taxas", name: "Taxas", color: "#c08bff", icon: "bank" });
   }
@@ -353,7 +364,7 @@
     const w = walletById(p.wallet);
     if (!wallets().some((x) => x.id === p.wallet)) return 0;
     w.show = true;
-    const rule = p.party ? data.smsRules[normParty(p.party)] : null;
+    const rule = p.party ? (data.smsRules[normParty(p.party)] || knownParty(p.party, p.kind)) : null;
     const base = { d: p.d, ts: p.ts, w: p.wallet, auto: true, sms: key };
     const note = p.party || p.content || "";
     let n = 0;
@@ -1243,7 +1254,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.3.0";
+  const APP_VERSION = "1.3.1";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if ($("formDlg").open) { $("formDlg").close(); return true; }
