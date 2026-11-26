@@ -26,3 +26,8 @@ As versões novas instalam por cima e mantêm os dados.
 4. Envie para `main`. Em poucos minutos o novo `Caderneta.apk` aparece em *Releases*.
 
 Envios para outros ramos geram uma **prévia** (pré-lançamento `previa`) para testar antes de juntar ao `main`.
+
+## Leitura de SMS (APK)
+Em **Ajustes › Ler SMS**, a Caderneta lê as SMS de movimentos do e-Mola (e, de forma experimental, M-Pesa e bancos),
+cria os lançamentos e acerta o saldo da carteira com o saldo da mensagem. As mensagens ficam só no telemóvel.
+Os formatos reconhecidos estão em `parseSms()` (`docs/app.js`).

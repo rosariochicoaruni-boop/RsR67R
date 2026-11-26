@@ -161,6 +161,14 @@ class MainActivity : Activity() {
     /** Chamado pelo JavaScript para partilhar a cópia de segurança e o ficheiro do Excel. */
     @Deprecated("Deprecated in Java")
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (requestCode == PEDIDO_SMS) {
+            val ok = grantResults.isNotEmpty() && grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }
+            if (!ok) SmsLeitor.definir(this, false)
+            web.evaluateJavascript("window.__cadernetaPermissaoSms && window.__cadernetaPermissaoSms($ok)", null)
+            // também pedir notificações, para o aviso de novo movimento
+            if (ok && !notificacoesPermitidas()) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), PEDIDO_NOTIFICACOES)
+            return
+        }
         if (requestCode == PEDIDO_NOTIFICACOES) {
             val ok = grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
             if (!ok) Lembretes.definir(this, false, Lembretes.hora(this), Lembretes.minuto(this))
@@ -174,6 +182,10 @@ class MainActivity : Activity() {
     private fun notificacoesPermitidas(): Boolean =
         android.os.Build.VERSION.SDK_INT < 33 ||
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    private fun smsPermitido(): Boolean =
+        checkSelfPermission(android.Manifest.permission.RECEIVE_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            checkSelfPermission(android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
     inner class Ponte {
         @JavascriptInterface
@@ -189,6 +201,29 @@ class MainActivity : Activity() {
             val c = this@MainActivity
             return "{\"ativo\":${Lembretes.ativo(c)},\"hora\":${Lembretes.hora(c)},\"minuto\":${Lembretes.minuto(c)},\"permitido\":${notificacoesPermitidas()}}"
         }
+
+        @JavascriptInterface
+        fun definirSms(ativo: Boolean) {
+            SmsLeitor.definir(this@MainActivity, ativo)
+            if (ativo && !smsPermitido()) {
+                runOnUiThread {
+                    requestPermissions(arrayOf(android.Manifest.permission.RECEIVE_SMS, android.Manifest.permission.READ_SMS), PEDIDO_SMS)
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun estadoSms(): String = "{\"ativo\":${SmsLeitor.ativo(this@MainActivity)},\"permitido\":${smsPermitido()}}"
+
+        @JavascriptInterface
+        fun smsPendentes(): String = SmsLeitor.pendentes(this@MainActivity)
+
+        @JavascriptInterface
+        fun smsLimpar() = SmsLeitor.limpar(this@MainActivity)
+
+        @JavascriptInterface
+        fun lerSmsAntigas(dias: Int): String =
+            if (smsPermitido()) SmsLeitor.antigas(this@MainActivity, dias) else "[]"
 
         @JavascriptInterface
         fun ultimoLancamento(dia: String) {
@@ -223,5 +258,6 @@ class MainActivity : Activity() {
         private const val HOST = "appassets.androidplatform.net"
         private const val PEDIDO_FICHEIRO = 41
         private const val PEDIDO_NOTIFICACOES = 42
+        private const val PEDIDO_SMS = 43
     }
 }
