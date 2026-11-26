@@ -1156,21 +1156,21 @@
     const NS = "http://www.w3.org/2000/svg";
     const mk = (tag, a, text) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (text != null) e.textContent = text; return e; };
     const s = mk("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Entradas e gastos dos últimos seis meses" });
-    for (let g = 1; g <= 3; g++) { const yy = T + (H - T - B) * (1 - g / 3); s.append(mk("line", { x1: L, x2: W - R, y1: yy, y2: yy, stroke: "rgba(160,185,255,.08)" })); }
-    s.append(mk("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, stroke: "rgba(160,185,255,.18)" }));
+    for (let g = 1; g <= 3; g++) { const yy = T + (H - T - B) * (1 - g / 3); s.append(mk("line", { x1: L, x2: W - R, y1: yy, y2: yy, stroke: "rgba(13,16,51,.07)" })); }
+    s.append(mk("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, stroke: "rgba(13,16,51,.18)" }));
     const h = (v) => v ? Math.max(3, v / max * (H - T - B)) : 0;
     vals.forEach((v, i) => {
       const cx = L + colW * i + colW / 2;
       const cur = v.m === m;
-      s.append(mk("rect", { x: cx - bw - 1.5, y: H - B - h(v.in), width: bw, height: h(v.in), rx: 3, fill: "#5fe3a1", opacity: cur ? 1 : 0.45 }));
-      s.append(mk("rect", { x: cx + 1.5, y: H - B - h(v.out), width: bw, height: h(v.out), rx: 3, fill: "#4f86ff", opacity: cur ? 1 : 0.45 }));
+      s.append(mk("rect", { x: cx - bw - 1.5, y: H - B - h(v.in), width: bw, height: h(v.in), rx: 3, fill: "#1d9a61", opacity: cur ? 1 : 0.4 }));
+      s.append(mk("rect", { x: cx + 1.5, y: H - B - h(v.out), width: bw, height: h(v.out), rx: 3, fill: "#0d1033", opacity: cur ? 1 : 0.35 }));
       const lbl = mk("text", { x: cx, y: H - 7, "text-anchor": "middle" }, MONTHS_S[Number(v.m.slice(5)) - 1]);
-      if (cur) lbl.setAttribute("style", "fill:#fff;font-weight:600");
+      if (cur) lbl.setAttribute("style", "fill:#0d1033;font-weight:700");
       s.append(lbl);
     });
     const total = vals.reduce((a, v) => a + (v.in - v.out), 0);
     return fold("chart", "Últimos 6 meses", vals.some((v) => v.in || v.out) ? `sobrou ${fmt(total)}` : "", [
-      el("div", { class: "legend" }, el("span", {}, el("i", { style: "background:#5fe3a1" }), "Entradas"), el("span", {}, el("i", { style: "background:#4f86ff" }), "Gastos")),
+      el("div", { class: "legend" }, el("span", {}, el("i", { style: "background:#1d9a61" }), "Entradas"), el("span", {}, el("i", { style: "background:#0d1033" }), "Gastos")),
       el("div", { class: "chart" }, s)]);
   }
 
@@ -1575,7 +1575,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.5.0";
+  const APP_VERSION = "1.6.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if (!$("lock").hidden) return false;

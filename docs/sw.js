@@ -1,9 +1,9 @@
 // Guarda o app no telemóvel para funcionar sem internet.
 // Ao publicar uma nova versão, aumente o número em CACHE.
-const CACHE = "caderneta-v1.5.0";
+const CACHE = "caderneta-v1.6.0";
 const FILES = ["./", "./index.html", "./app.css", "./app.js", "./manifest.webmanifest",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/maskable-512.png",
-  "./fonts/inter-400.woff2", "./fonts/inter-600.woff2"];
+  "./fonts/poppins-400.woff2", "./fonts/poppins-600.woff2", "./fonts/poppins-700.woff2"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
