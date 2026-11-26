@@ -301,7 +301,8 @@
     return isFinite(v) && int !== "" ? Math.round(v * 100) : null;
   }
   const AMT = "(\\d[\\d.,]*)\\s?MT";
-  const titleCase = (t) => t.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase()).trim();
+  // "AFONSO MAURICIO" -> "Afonso Mauricio"; siglas curtas (EDM, BCI) ficam em maiúsculas
+  const titleCase = (t) => t.trim().split(/\s+/).map((w) => (w.length <= 3 && /^[A-Z]+$/.test(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
   const normParty = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, " ").trim();
   const WALLET_LABEL = { emola: "e-Mola", mpesa: "M-Pesa", banco: "Banco" };
 
@@ -309,12 +310,23 @@
     const b = String(body || "").replace(/\s+/g, " ").trim();
     const low = (String(from || "") + " " + b).toLowerCase();
     const r = (re) => b.match(new RegExp(re, "i"));
-    const wallet = /e-?mola/.test(low) ? "emola" : /m-?pesa/.test(low) ? "mpesa"
+    const fromLow = String(from || "").toLowerCase();
+    const wallet = /e-?mola/.test(fromLow) ? "emola" : /m-?pesa/.test(fromLow) ? "mpesa" : /e-?mola/.test(low) ? "emola" : /m-?pesa/.test(low) ? "mpesa"
       : /\b(bci|bim|millennium|standard ?bank|absa|moza|banco|fnb|nedbank|letshego|access bank|ecobank|socremo|bni)\b/.test(low) ? "banco" : null;
     if (!wallet || !/\d\s?MT/i.test(b)) return null;
     let kind = null, amount = null, party = "", content = "", m;
     const failed = /falhou|sem sucesso|n[aã]o tens saldo|saldo insuficiente|n[aã]o foi poss[ií]vel/i.test(b);
     if (failed) { /* não houve movimento: só o saldo conta */ }
+    else if (/EDM\s+Credelec/i.test(b) && (m = r("(?:Recarga|C[oó]digo(?:\\s*\\d)?:?)\\s+([\\d ]{10,}?)\\s+Contador"))) {
+      // recibo da EDM: não é um novo gasto; junta o código de recarga ao pagamento
+      const kwh = r("Energia\\s+([\\d.,]+)\\s*kwh"), tot = r("Total Pago\\s+([\\d.,]+)\\s*MT");
+      return { wallet, kind: "credelec", token: m[1].trim(), kwh: kwh ? kwh[1] : "", amount: tot ? smsNum(tot[1]) : 0, ts: ts || Date.now(), id: null, body: b, fee: 0, bal: null, party: "", content: "", d: isoOf(new Date(ts || Date.now())) };
+    }
+    else if ((m = r("Recebe(?:u|ste) " + AMT + " do Agente"))) { kind = "deposit"; amount = smsNum(m[1]); }
+    else if ((m = r("pagamento Credelec com um valor de " + AMT))) { kind = "out"; amount = smsNum(m[1]); party = "EDM"; }
+    else if ((m = r("receber dinheiro d[aoe] m-?Pesa\\s+(.+?)\\s+(?:as|às)\\b")) && r("montante:?\\s*" + AMT)) { kind = "in"; amount = smsNum(r("montante:?\\s*" + AMT)[1]); party = m[1] + " (M-Pesa)"; }
+    else if ((m = r("Enviou para o m-?pesa\\s+(\\+?\\d{6,})")) && r("valor:?\\s*" + AMT)) { kind = "out"; amount = smsNum(r("valor:?\\s*" + AMT)[1]); party = "M-Pesa " + m[1]; }
+    else if ((m = r("opera[cç][aã]o de compra no valor de " + AMT + ".*?(?:na entidade|entidade)\\s+(.+?)\\s+(?:com refer|aos\\b)"))) { kind = "out"; amount = smsNum(m[1]); party = m[2]; }
     else if ((m = r("levantamento de " + AMT)) || (m = r("Levanta(?:ste|u) " + AMT))) { kind = "withdraw"; amount = smsNum(m[1]); }
     else if ((m = r("Compra(?:ste|u) (.+?) atrav[eé]s d[oe] M-?Pesa")) && (m = [m[0], m[1], r("no valor de " + AMT)]) && m[2]) {
       kind = "out"; amount = smsNum(m[2][1]); party = "Vodacom"; content = m[1].trim();
@@ -353,7 +365,7 @@
     if (!/^\+?\d{6,}$/.test(party.trim())) party = party.replace(/^\d{6,}\s*,?\s*/, "");
     party = party.trim();
     return { wallet, kind, amount, fee: fee ? smsNum(fee[1]) : 0, bal: bal ? smsNum(bal[1]) : null, id: id ? id[1] : null,
-      party: party ? (/^\+?\d+$/.test(party) ? party : titleCase(party)) : "", content: content || (cont ? cont[1].trim() : ""), d, ts: t, body: b };
+      party: party ? (/^\+?\d+$/.test(party) ? party : titleCase(party).replace(/m-?pesa/i, "M-Pesa")) : "", content: content || (cont ? cont[1].trim() : ""), d, ts: t, body: b };
   }
 
   // Empresas conhecidas: categoria automática (pode ser mudada; a escolha passa a valer depois)
@@ -391,13 +403,29 @@
     const base = { d: p.d, ts: p.ts, w: p.wallet, auto: true, sms: key };
     const note = p.party === "Vodacom" && p.content ? `${p.content} (M-Pesa)` : (p.party || p.content || "");
     let n = 0;
+    if (p.kind === "credelec") {
+      const pay = data.entries.filter((e) => e.auto && e.t === "out" && normParty(e.party) === "edm" && !e.token && Math.abs(e.ts - p.ts) < 6 * 3600e3 && (!p.amount || e.v === p.amount))
+        .sort((a, b) => Math.abs(a.ts - p.ts) - Math.abs(b.ts - p.ts))[0];
+      if (pay) { pay.token = p.token; pay.note = `EDM · recarga ${p.token}${p.kwh ? ` (${p.kwh} kWh)` : ""}`; }
+      else { data.credelecPending = (data.credelecPending || []).concat([{ token: p.token, kwh: p.kwh, amount: p.amount, ts: p.ts }]).slice(-20); }
+      data.smsSeen.push(key);
+      return 0;
+    }
     if (p.kind === "bal") { /* só acerto de saldo */ }
+    else if (p.kind === "deposit") {
+      data.entries.push({ id: uid(), t: "tr", v: p.amount, note: "Depósito no agente", ...base, w: "dinheiro", w2: p.wallet }); n++;
+    }
     else if (p.kind === "withdraw") {
       data.entries.push({ id: uid(), t: "tr", v: p.amount, w2: "dinheiro", note: "Levantamento no agente", ...base }); n++;
     } else {
       const t = p.kind;
       const cat = rule && catList(t).some((c) => c.id === rule) ? rule : (t === "in" ? "outent" : "outros");
-      data.entries.push({ id: uid(), t, v: p.amount, cat, note, party: p.party, review: !rule, ...base }); n++;
+      const entry = { id: uid(), t, v: p.amount, cat, note, party: p.party, review: !rule, ...base };
+      if (normParty(p.party) === "edm" && data.credelecPending) {
+        const i = data.credelecPending.findIndex((c) => Math.abs(c.ts - p.ts) < 6 * 3600e3 && (!c.amount || c.amount === p.amount));
+        if (i >= 0) { const c = data.credelecPending.splice(i, 1)[0]; entry.token = c.token; entry.note = `EDM · recarga ${c.token}${c.kwh ? ` (${c.kwh} kWh)` : ""}`; }
+      }
+      data.entries.push(entry); n++;
     }
     if (p.fee > 0) {
       ensureTaxasCat();
@@ -1278,7 +1306,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.3.2";
+  const APP_VERSION = "1.3.4";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if ($("formDlg").open) { $("formDlg").close(); return true; }
