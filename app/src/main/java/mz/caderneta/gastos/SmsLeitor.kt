@@ -27,6 +27,10 @@ object SmsLeitor {
     fun ativo(ctx: Context) = prefs(ctx).getBoolean("ativo", false)
     fun definir(ctx: Context, ativo: Boolean) = prefs(ctx).edit().putBoolean("ativo", ativo).apply()
 
+    /** Notificação a cada SMS lida: desligada por omissão (a SMS do M-Pesa/e-Mola já avisa). */
+    fun aviso(ctx: Context) = prefs(ctx).getBoolean("aviso", false)
+    fun definirAviso(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("aviso", on).apply()
+
     /** Só interessam mensagens com um valor em MT e um saldo, ou de um remetente conhecido. */
     fun relevante(remetente: String, corpo: String): Boolean {
         val r = remetente.lowercase()
@@ -78,6 +82,7 @@ object SmsLeitor {
     }
 
     fun avisar(ctx: Context, remetente: String) {
+        if (!aviso(ctx)) return
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         if (Build.VERSION.SDK_INT >= 26) {
             nm.createNotificationChannel(NotificationChannel(CANAL, "Movimentos lidos das SMS", NotificationManager.IMPORTANCE_LOW))

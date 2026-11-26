@@ -37,6 +37,7 @@
     shield: '<path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2 2 4-4"/>',
     doc: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M3.5 10h17M7.5 14.5h4"/>',
     coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.3c-.5-1-1.6-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.8 5.7 1.6 5.7 4.4 0 1.2-1.2 2.1-2.9 2.1-1.3 0-2.4-.6-2.9-1.6M12 6.2v1.5M12 16.3v1.5"/>',
+    user: '<circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.2-3.3 3.9-5 7-5s5.8 1.7 7 5"/>',
     bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'
   };
   const CAT_ICON_CHOICES = ["alim", "merc", "transp", "casa", "energ", "cred", "saude", "famil", "lazer", "cafe", "roupa", "book", "igreja", "gift", "salario", "negocio", "outent", "outros", "tag"];
@@ -85,6 +86,7 @@
     if (!Array.isArray(d.smsSeen)) d.smsSeen = [];
     if (!d.smsRules) d.smsRules = {};
     if (!s.sms) s.sms = { on: false };
+    if (!d.profile) d.profile = { name: "", phone: "", email: "", photo: "" };
     // 1.4.0: levantamentos lidos das SMS passam a ficar "por dividir" (uma vez)
     if (!s.splitMigrated) {
       s.splitMigrated = true;
@@ -269,6 +271,7 @@
         else if (f.type === "date") attrs.type = "date";
         else if (f.type === "month") attrs.type = "month";
         else if (f.type === "number") Object.assign(attrs, { type: "number", inputmode: "numeric", min: f.min, max: f.max });
+        else if (f.type === "pin") Object.assign(attrs, { type: "password", inputmode: "numeric", maxlength: 6, pattern: "[0-9]*", placeholder: "••••" });
         else Object.assign(attrs, { maxlength: f.maxlength || 40, placeholder: f.placeholder || "" });
         input = el("input", attrs);
         if (f.value != null) input.value = f.value;
@@ -486,6 +489,160 @@
   const reviewList = () => data.entries.filter((e) => e.review).sort((a, b) => b.ts - a.ts);
   window.__cadernetaSmsTeste = (list) => { const n = processSms(list); renderView(); return n; };
 
+  // Secção que abre e fecha (lembra o estado enquanto o app está aberto)
+  const openSec = {};
+  function fold(id, title, sub, children, openDefault = false) {
+    const d = el("details", { class: "panel fold" });
+    d.open = id in openSec ? openSec[id] : openDefault;
+    d.addEventListener("toggle", () => { openSec[id] = d.open; });
+    d.append(el("summary", {}, el("span", { class: "fold-title", text: title }), sub ? el("span", { class: "fold-sub", text: sub }) : null));
+    const inner = el("div", { class: "fold-body" });
+    for (const c of children) if (c) inner.append(c);
+    d.append(inner);
+    return d;
+  }
+
+  // ================= Perfil =================
+  const initialsOf = (name) => (name || "").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  function fillAvatar(node) {
+    node.replaceChildren();
+    const pr = data.profile;
+    if (pr.photo && /^data:image\//.test(pr.photo)) node.append(el("img", { src: pr.photo, alt: "" }));
+    else if (initialsOf(pr.name)) node.textContent = initialsOf(pr.name);
+    else node.append(svg("user"));
+  }
+  const firstName = () => (data.profile.name || "").trim().split(/\s+/)[0] || "";
+  function pickPhoto(onDone) {
+    const inp = el("input", { type: "file", accept: "image/*" });
+    inp.onchange = () => {
+      const f = inp.files[0]; if (!f) return;
+      const img = new Image(); const url = URL.createObjectURL(f);
+      img.onload = () => {
+        const S = 160, c = document.createElement("canvas"); c.width = S; c.height = S;
+        const k = Math.max(S / img.width, S / img.height), w = img.width * k, h = img.height * k;
+        c.getContext("2d").drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+        URL.revokeObjectURL(url);
+        onDone(c.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); toast("Não foi possível abrir esta imagem."); };
+      img.src = url;
+    };
+    inp.click();
+  }
+
+  // ================= Código de acesso =================
+  const PIN_KEY = "caderneta:pin";
+  const pinRec = () => { try { return JSON.parse(localStorage.getItem(PIN_KEY)); } catch (e) { return null; } };
+  async function hashPin(pin, salt) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ":" + pin));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  async function setPin(pin) {
+    const salt = Array.from(crypto.getRandomValues(new Uint8Array(12))).map((b) => b.toString(16).padStart(2, "0")).join("");
+    localStorage.setItem(PIN_KEY, JSON.stringify({ salt, hash: await hashPin(pin, salt), len: pin.length }));
+    protectScreen(true);
+  }
+  function clearPin() { localStorage.removeItem(PIN_KEY); protectScreen(false); }
+  async function checkPin(pin) { const r = pinRec(); return !!r && (await hashPin(pin, r.salt)) === r.hash; }
+  function protectScreen(on) { if (android && android.proteger) { try { android.proteger(on); } catch (e) { /* ignorar */ } } }
+
+  let lockInput = "", unlocked = false, hiddenAt = 0;
+  const LOCK_AFTER = 60 * 1000;
+  function showLock() {
+    const r = pinRec();
+    if (!r) { unlock(); return; }
+    unlocked = false; lockInput = "";
+    if ($("formDlg").open) $("formDlg").close();
+    document.body.classList.add("locked");
+    fillAvatar($("lockAvatar"));
+    $("lockTitle").textContent = firstName() ? `Olá, ${firstName()}` : "Introduza o código";
+    $("lockMsg").textContent = "Introduza o código para abrir";
+    $("lockMsg").className = "";
+    renderDots();
+    $("lock").hidden = false;
+  }
+  function unlock() {
+    unlocked = true; $("lock").hidden = true; document.body.classList.remove("locked");
+    if (pendingAfterUnlock) { const f = pendingAfterUnlock; pendingAfterUnlock = null; f(); }
+  }
+  let pendingAfterUnlock = null;
+  function renderDots() {
+    const r = pinRec(); const n = r ? r.len : 4;
+    $("pinDots").replaceChildren(...Array.from({ length: n }, (_, i) => el("i", { class: i < lockInput.length ? "on" : "" })));
+  }
+  function lockWait() {
+    let until = 0; try { until = Number(localStorage.getItem("caderneta:pinWait")) || 0; } catch (e) { /* */ }
+    return Math.max(0, until - Date.now());
+  }
+  async function lockKey(k) {
+    const r = pinRec(); if (!r) return;
+    if (k === "forgot") { forgotPin(); return; }
+    const wait = lockWait();
+    if (wait) { $("lockMsg").textContent = `Muitas tentativas. Espere ${Math.ceil(wait / 1000)} segundos.`; $("lockMsg").className = "err"; return; }
+    if (k === "back") lockInput = lockInput.slice(0, -1);
+    else if (/^\d$/.test(k) && lockInput.length < r.len) lockInput += k;
+    renderDots();
+    if (lockInput.length === r.len) {
+      const ok = await checkPin(lockInput);
+      if (ok) { try { localStorage.removeItem("caderneta:pinFails"); } catch (e) { /* */ } unlock(); return; }
+      let fails = 0; try { fails = (Number(localStorage.getItem("caderneta:pinFails")) || 0) + 1; localStorage.setItem("caderneta:pinFails", fails); } catch (e) { /* */ }
+      if (fails % 5 === 0) { try { localStorage.setItem("caderneta:pinWait", Date.now() + 30000); } catch (e) { /* */ } }
+      lockInput = ""; renderDots();
+      const dots = $("pinDots"); dots.classList.remove("shake"); void dots.offsetWidth; dots.classList.add("shake");
+      if (navigator.vibrate) navigator.vibrate(120);
+      $("lockMsg").textContent = fails % 5 === 0 ? "Código errado 5 vezes. Espere 30 segundos." : "Código errado. Tente outra vez.";
+      $("lockMsg").className = "err";
+    }
+  }
+  function forgotPin() {
+    $("lockMsg").className = "";
+    $("lockMsg").textContent = "Sem o código não é possível abrir. Pode apagar os dados deste telemóvel e começar de novo (e depois restaurar uma cópia de segurança, se tiver).";
+    const pad = $("lockPad");
+    if (pad.querySelector(".reset")) return;
+    const btn = el("button", { type: "button", class: "ghost reset", text: "Apagar tudo", style: "grid-column: span 3; width: auto; border-radius: 12px; height: 44px; color: var(--out)" });
+    let armed = false;
+    btn.onclick = () => {
+      if (!armed) { armed = true; btn.textContent = "Tocar de novo para apagar TODOS os dados"; return; }
+      try { localStorage.removeItem(KEY); } catch (e) { /* */ }
+      clearPin(); location.reload();
+    };
+    pad.append(btn);
+  }
+  $("lockPad").addEventListener("click", (e) => { const b = e.target.closest("button[data-p]"); if (b) lockKey(b.dataset.p); });
+  document.addEventListener("keydown", (e) => {
+    if ($("lock").hidden) return;
+    if (/^\d$/.test(e.key)) lockKey(e.key); else if (e.key === "Backspace") lockKey("back"); else return;
+    e.preventDefault();
+  }, true);
+
+  function editPinFlow() {
+    const has = !!pinRec();
+    openForm({
+      title: has ? "Mudar código de acesso" : "Criar código de acesso",
+      intro: "Um código de 4 a 6 números. É pedido ao abrir a Caderneta e ao voltar depois de 1 minuto fora. Se o esquecer, só pode apagar os dados e começar de novo, por isso guarde-o bem.",
+      fields: [
+        has ? { id: "old", label: "Código atual", type: "pin" } : null,
+        { id: "p1", label: "Novo código", type: "pin", half: true },
+        { id: "p2", label: "Repetir o código", type: "pin", half: true }
+      ].filter(Boolean),
+      submit: has ? "Mudar código" : "Ativar código",
+      onSubmit: (v) => {
+        if (!/^\d{4,6}$/.test(v.p1)) return "O código tem de ter 4 a 6 números.";
+        if (v.p1 !== v.p2) return "Os dois códigos não são iguais.";
+        const go = async () => {
+          if (has && !(await checkPin(v.old || ""))) { toast("O código atual está errado. Nada foi mudado."); return; }
+          await setPin(v.p1); renderView(); toast(has ? "Código mudado" : "Código ativo. A Caderneta vai pedi-lo ao abrir.");
+        };
+        go();
+      },
+      onDelete: has ? () => {
+        openForm({ title: "Desligar código", intro: "Para desligar, escreva o código atual.", fields: [{ id: "old", label: "Código atual", type: "pin" }], submit: "Desligar",
+          onSubmit: (v) => { (async () => { if (await checkPin(v.old || "")) { clearPin(); renderView(); toast("Código desligado"); } else toast("Código errado. O código continua ativo."); })(); } });
+      } : null,
+      deleteLabel: "Desligar código"
+    });
+  }
+
   // ================= Navegação =================
   const VIEWS = ["lancar", "resumo", "carteira", "historico", "ajustes"];
   let view = "lancar";
@@ -557,7 +714,8 @@
   const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"; };
 
   function renderLaunch() {
-    $("greeting").textContent = greeting();
+    $("greeting").textContent = greeting() + (firstName() ? ", " + firstName() : "");
+    fillAvatar($("helloAvatar"));
     $("todayAmount").replaceChildren(moneyEl(sum(data.entries.filter((e) => e.t === "out" && e.d === today()))));
 
     // aviso de pagamentos fixos por confirmar
@@ -816,20 +974,16 @@
         el("button", { type: "button", class: "btn small", text: "Já está certo", onclick: () => { data.settings.walletsSet = true; save(); renderView(); } })));
     }
 
-    body.append(el("div", { class: "controls" },
-      control("transfer", "Transferir", transfer),
-      control("piggy", "Guardar", () => moveGoal(null)),
-      control("repeat", "Novo fixo", () => editFixed(null)),
-      control("target", "Nova meta", () => editGoal(null))));
+    body.append(el("div", { class: "mini-actions" },
+      el("button", { type: "button", class: "btn small", onclick: transfer }, svg("transfer"), "Transferir")));
 
     // Fixos
     const m = monthOf(today()), dayNow = Number(today().slice(8));
-    const fxPanel = el("section", { class: "panel" });
+    const fxParts = [];
     const pending = data.fixed.filter((f) => !fixedPaidEntry(f, m));
-    fxPanel.append(el("h2", { class: "panel-title" }, el("span", { text: "Pagamentos fixos" }),
-      pending.length ? el("span", { class: "label", text: `Por confirmar: ${fmt(pending.filter((f) => f.t === "out").reduce((a, f) => a + f.v, 0))}` }) : null));
-    if (!data.fixed.length) fxPanel.append(el("p", { class: "muted", text: "Renda, Credelec, crédito, mensalidades, salário… Registe uma vez e confirme todos os meses com um toque." }),
-      el("button", { type: "button", class: "btn", text: "+ Adicionar pagamento fixo", onclick: () => editFixed(null) }));
+    const dueCount = pending.filter((f) => Math.min(f.day, daysIn(m)) <= dayNow).length;
+    const fxPanel = { append: (...k) => fxParts.push(...k) };
+    if (!data.fixed.length) fxPanel.append(el("p", { class: "muted", text: "Renda, Credelec, crédito, mensalidades, salário… Registe uma vez e confirme todos os meses com um toque." }));
     else {
       const wrap = el("div");
       for (const f of data.fixed.slice().sort((a, b) => a.day - b.day)) {
@@ -845,13 +999,13 @@
       }
       fxPanel.append(wrap);
     }
-    body.append(fxPanel);
+    fxParts.push(el("button", { type: "button", class: "btn small", text: "+ Novo pagamento fixo", onclick: () => editFixed(null) }));
+    body.append(fold("fixos", "Pagamentos fixos", !data.fixed.length ? "nenhum" : pending.length ? `${pending.length} por confirmar` : "todos pagos", fxParts, dueCount > 0));
 
     // Metas
-    const gPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title" }, el("span", { text: "Metas" }),
-      data.goals.length ? el("span", { class: "label", text: `Guardado: ${fmt(data.goals.reduce((a, g) => a + goalSaved(g.id), 0))}` }) : null));
-    if (!data.goals.length) gPanel.append(el("p", { class: "muted", text: "Guardar com um objetivo motiva mais. Crie uma meta e vá guardando o que sobra." }),
-      el("button", { type: "button", class: "btn primary", text: "Criar a primeira meta", onclick: () => editGoal(null) }));
+    const gParts = [];
+    const gPanel = { append: (...k) => gParts.push(...k) };
+    if (!data.goals.length) gPanel.append(el("p", { class: "muted", text: "Guardar com um objetivo motiva mais. Crie uma meta e vá guardando o que sobra." }));
     else {
       const wrap = el("div");
       for (const g of data.goals) {
@@ -869,7 +1023,9 @@
       }
       gPanel.append(wrap);
     }
-    body.append(gPanel);
+    gParts.push(el("button", { type: "button", class: "btn small", text: "+ Nova meta", onclick: () => editGoal(null) }));
+    const g0 = data.goals[0];
+    body.append(fold("metas", "Metas", g0 ? `${g0.name} ${Math.min(100, Math.round(goalSaved(g0.id) / (g0.target || 1) * 100))}%${data.goals.length > 1 ? ` · +${data.goals.length - 1}` : ""}` : "nenhuma", gParts));
   }
 
   // ================= Resumo =================
@@ -882,29 +1038,19 @@
     const toGoals = list.filter((e) => e.t === "goal").reduce((a, e) => a + e.v, 0);
     const left = E - S;
 
-    if (isCur) {
-      const t = today(), ws = weekStart();
-      body.append(el("div", { class: "kpis" },
-        kpi("Hoje", sum(outs.filter((e) => e.d === t))),
-        kpi("Esta semana", sum(data.entries.filter((e) => e.t === "out" && e.d >= ws && e.d <= t))),
-        kpi("Este mês", S)));
-    }
 
     const [y, mo] = m.split("-").map(Number);
     body.append(el("div", { class: "glass-card bank-card" },
       el("div", { class: "bank-top" }, el("span", { class: "bank-mark" }, svg("coin")), el("span", { class: "bank-month", text: `${MONTHS_S[mo - 1]} ${y}` })),
       el("div", {}, el("div", { class: "bank-label", text: "Sobra do mês" }),
         el("div", { class: "bank-number" }, fmtNum(left), el("span", { class: "cur", text: "MT" }))),
+      isCur ? el("div", { class: "bank-today" },
+        el("span", {}, "Hoje ", el("b", { text: fmt(sum(outs.filter((e) => e.d === today()))) })),
+        el("span", {}, "Semana ", el("b", { text: fmt(sum(data.entries.filter((e) => e.t === "out" && e.d >= weekStart() && e.d <= today()))) }))) : null,
       el("div", { class: "bank-bottom" },
         el("span", {}, "Entradas", el("b", { text: fmt(E) })),
         toGoals ? el("span", { style: "text-align:center" }, "Em metas", el("b", { text: fmt(toGoals) })) : null,
         el("span", { style: "text-align:right" }, "Gastos", el("b", { text: fmt(S) })))));
-
-    body.append(el("div", { class: "controls" },
-      control("plus", "Novo gasto", () => { setLaunchType("out"); location.hash = "#lancar"; }),
-      control("outent", "Nova entrada", () => { setLaunchType("in"); location.hash = "#lancar"; }),
-      control("piggy", "Guardar", () => moveGoal(null)),
-      control("shield", "Cópia", doBackup)));
 
     renderBackupNag(body);
     if (android && !data.settings.reminder.on && data.entries.length >= 3 && !data.settings.reminderNagDone) {
@@ -944,7 +1090,6 @@
     }
     body.append(tiles);
 
-    body.append(el("a", { class: "row-card", href: "#historico" }, el("span", { class: "ic-box" }, svg("doc")), el("span", { class: "t", text: `Lançamentos de ${MONTHS[mo - 1]}` }), el("span", { class: "link", text: "Ver" })));
 
     // Categorias (com limites)
     const prevM = shiftMonth(m, -1);
@@ -1024,18 +1169,16 @@
       s.append(lbl);
     });
     const total = vals.reduce((a, v) => a + (v.in - v.out), 0);
-    return el("section", { class: "panel" },
-      el("h2", { class: "panel-title", text: "Últimos 6 meses" }),
+    return fold("chart", "Últimos 6 meses", vals.some((v) => v.in || v.out) ? `sobrou ${fmt(total)}` : "", [
       el("div", { class: "legend" }, el("span", {}, el("i", { style: "background:#5fe3a1" }), "Entradas"), el("span", {}, el("i", { style: "background:#4f86ff" }), "Gastos")),
-      el("div", { class: "chart" }, s),
-      vals.some((v) => v.in || v.out) ? el("p", { class: "muted", text: `Nestes 6 meses sobrou ${fmt(total)} no total.` }) : null);
+      el("div", { class: "chart" }, s)]);
   }
 
   function renderBackupNag(box) {
     if (data.entries.length < 5) return;
     const last = data.settings.lastBackup || 0;
     const days = Math.floor((Date.now() - last) / 86400000);
-    if (last && days < 14) return;
+    if (last && days < 30) return;
     box.append(el("div", { class: "nag" },
       el("span", { text: last ? `Já passaram ${days} dias desde a última cópia de segurança.` : "Ainda não fez nenhuma cópia de segurança." }),
       el("button", { type: "button", class: "btn small primary", text: "Fazer cópia", onclick: doBackup })));
@@ -1245,6 +1388,29 @@
       el("p", { class: "muted", text: "Adicione a Caderneta ao ecrã principal para abrir como um app, mesmo sem internet." }),
       el("button", { type: "button", class: "btn primary", text: "Instalar app", onclick: async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; renderAjustes(); } })));
 
+    // Perfil
+    const pr = data.profile;
+    const av = el("span", { class: "avatar" }); fillAvatar(av);
+    const nameIn = el("input", { id: "pName", value: pr.name || "", maxlength: 40, placeholder: "O seu nome", autocomplete: "name" });
+    const phoneIn = el("input", { id: "pPhone", value: pr.phone || "", maxlength: 20, inputmode: "tel", placeholder: "Ex.: 84 000 0000", autocomplete: "tel" });
+    const mailIn = el("input", { id: "pMail", value: pr.email || "", maxlength: 60, type: "email", placeholder: "nome@exemplo.com", autocomplete: "email" });
+    const saveProfile = () => { pr.name = nameIn.value.trim(); pr.phone = phoneIn.value.trim(); pr.email = mailIn.value.trim(); save(); fillAvatar(av); toast("Perfil guardado"); };
+    body.append(fold("perfil", "Perfil", pr.name || "sem nome", [
+      el("div", { class: "profile-row" }, av, el("div", { class: "btnrow" },
+        el("button", { type: "button", class: "btn small", text: pr.photo ? "Mudar foto" : "Escolher foto", onclick: () => pickPhoto((url) => { pr.photo = url; save(); renderView(); toast("Foto guardada"); }) }),
+        pr.photo ? el("button", { type: "button", class: "btn small", text: "Tirar foto", onclick: () => { pr.photo = ""; save(); renderView(); } }) : null)),
+      el("label", { class: "field" }, el("span", { text: "Nome" }), nameIn),
+      el("div", { class: "row2" }, el("label", { class: "field" }, el("span", { text: "Telemóvel (opcional)" }), phoneIn), el("label", { class: "field" }, el("span", { text: "E-mail (opcional)" }), mailIn)),
+      el("button", { type: "button", class: "btn primary", text: "Guardar perfil", onclick: saveProfile })
+    ], !pr.name));
+
+    // Código de acesso
+    const hasPin = !!pinRec();
+    body.append(fold("codigo", "Código de acesso", hasPin ? "ativo" : "desligado", [
+      el("p", { class: "muted", text: "Ninguém abre a Caderneta nem vê os seus valores sem o código. Também esconde o conteúdo na lista de apps recentes." }),
+      el("button", { type: "button", class: "btn" + (hasPin ? "" : " primary"), text: hasPin ? "Mudar ou desligar código" : "Criar código", onclick: editPinFlow })
+    ]));
+
     // Meta mensal
     const goalIn = el("input", { id: "goalInput", inputmode: "decimal", autocomplete: "off", placeholder: "Ex.: 3 000", value: data.settings.saveGoal ? fmtPlain(data.settings.saveGoal) : "" });
     const goalErr = el("p", { class: "err" });
@@ -1255,13 +1421,13 @@
       data.settings.saveGoal = v; save(); goalErr.textContent = ""; toast(v ? `Meta definida: guardar ${fmt(v)} por mês` : "Meta removida");
     };
     goalIn.addEventListener("keydown", (e) => { if (e.key === "Enter") saveGoal(); });
-    body.append(el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Poupança mensal" }),
+    body.append(fold("poupanca", "Poupança mensal", data.settings.saveGoal ? fmt(data.settings.saveGoal) : "sem meta", [
       el("p", { class: "muted", text: "Quanto quer guardar por mês? O resumo mostra quanto ainda pode gastar para cumprir." }),
-      el("div", { class: "setrow" }, goalIn, el("button", { type: "button", class: "btn primary", text: "Guardar", onclick: saveGoal })), goalErr));
+      el("div", { class: "setrow" }, goalIn, el("button", { type: "button", class: "btn primary", text: "Guardar", onclick: saveGoal })), goalErr]));
 
     // Lembrete
     const rem = data.settings.reminder;
-    const remPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Lembrete diário" }));
+    const remParts = []; const remPanel = { append: (...k) => remParts.push(...k) };
     if (android && android.definirLembrete) {
       const st = androidReminderState();
       if (st) { rem.on = !!st.ativo && st.permitido !== false; rem.h = st.hora; rem.m = st.minuto; }
@@ -1272,10 +1438,10 @@
       remPanel.append(el("label", { class: "switch" }, el("span", { text: "Avisar-me se não anotar nada no dia" }), sw),
         el("div", { class: "setrow" }, el("span", { class: "muted", text: "Hora do aviso" }), time));
     } else remPanel.append(el("p", { class: "muted", text: "O lembrete funciona no app instalado (APK) para Android." }));
-    body.append(remPanel);
+    body.append(fold("lembrete", "Lembrete diário", rem.on ? `${pad(rem.h)}:${pad(rem.m)}` : "desligado", remParts));
 
     // Leitura de SMS
-    const smsPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Ler SMS do e-Mola, M-Pesa e banco" }));
+    const smsParts = []; const smsPanel = { append: (...k) => smsParts.push(...k) };
     if (android && android.definirSms) {
       let st = null; try { st = JSON.parse(android.estadoSms()); } catch (e) { st = null; }
       const on = !!(st && st.ativo && st.permitido);
@@ -1284,6 +1450,11 @@
       smsPanel.append(
         el("p", { class: "muted", text: "Quando chega uma SMS de pagamento, envio, recebimento ou levantamento, a Caderneta cria o lançamento e acerta o saldo da carteira com o saldo real da mensagem. As mensagens são lidas só neste telemóvel; nada é enviado para fora." }),
         el("label", { class: "switch" }, el("span", { text: "Ler SMS automaticamente" }), sw),
+        on && android.definirSmsAviso ? (() => {
+          const nsw = el("input", { type: "checkbox", "aria-label": "Notificação a cada SMS lida" }); nsw.checked = !!(st && st.aviso);
+          nsw.onchange = () => android.definirSmsAviso(nsw.checked);
+          return el("label", { class: "switch" }, el("span", { text: "Notificação a cada SMS lida" }), nsw);
+        })() : null,
         el("p", { class: "muted", text: "e-Mola e M-Pesa: reconhecidos. Bancos: leitura experimental (mande exemplos para melhorar)." }),
         on ? el("p", { class: "muted" }, el("b", { text: "Primeiro uso: " }), "consulte o saldo do M-Pesa e do e-Mola no telemóvel. A SMS com o saldo sincroniza cada carteira sozinha, sem escrever nada.") : null,
         on ? el("button", { type: "button", class: "btn", text: "Importar SMS dos últimos 30 dias", onclick: () => {
@@ -1292,11 +1463,11 @@
           toast(n ? `${n} movimento${n > 1 ? "s" : ""} importado${n > 1 ? "s" : ""}. Veja-os em Histórico.` : "Não encontrei movimentos novos nas SMS.");
         } }) : null);
     } else smsPanel.append(el("p", { class: "muted", text: "Disponível no app instalado (APK) para Android." }));
-    body.append(smsPanel);
+    body.append(fold("sms", "Ler SMS (M-Pesa, e-Mola)", data.settings.sms.on ? "ligado" : "desligado", smsParts));
 
     // Carteiras
-    const wPanel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Carteiras" }),
-      el("p", { class: "muted", text: "Escolha as carteiras que usa. O saldo de cada uma aparece em Carteira." }));
+    const wParts = [el("p", { class: "muted", text: "Escolha as carteiras que usa. O saldo de cada uma aparece em Carteira." })];
+    const wPanel = { append: (...k) => wParts.push(...k) };
     for (const w of wallets()) {
       const name = el("input", { value: w.name, maxlength: 20, "aria-label": "Nome da carteira" });
       name.addEventListener("change", () => { const v = name.value.trim(); if (v) { w.name = v; save(); toast("Carteira renomeada"); } else name.value = w.name; });
@@ -1304,27 +1475,26 @@
       sw.onchange = () => { w.show = sw.checked; if (!usedWallets().length) { w.show = true; sw.checked = true; toast("Precisa de pelo menos uma carteira."); } save(); };
       wPanel.append(el("div", { class: "setrow switch" }, el("span", { class: "icon-pick" }, svg(w.icon)), name, sw));
     }
-    body.append(wPanel);
-
-    for (const t of ["out", "in"]) body.append(catEditor(t));
+    body.append(fold("carteiras", "Carteiras", usedWallets().map((w) => w.name).join(", "), wParts));
+    body.append(fold("categorias", "Categorias e limites", `${catList("out").length + catList("in").length} categorias`, [catEditor("out"), catEditor("in")]));
 
     // Cópia
     const last = data.settings.lastBackup;
     const fileIn = el("input", { type: "file", accept: ".json,application/json", hidden: true, onchange: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) readBackup(f); } });
-    body.append(el("section", { class: "panel" }, el("h2", { class: "panel-title", text: "Cópia de segurança" }),
+    body.append(fold("copia", "Cópia de segurança", last ? `última: ${new Date(last).toLocaleDateString("pt-PT")}` : "nunca feita", [
       el("p", { class: "muted", text: "Os dados ficam só neste telemóvel. Faça uma cópia de vez em quando e guarde-a no WhatsApp, e-mail ou Google Drive. Se mudar de telemóvel, use Restaurar." }),
       el("p", { class: "muted", text: last ? `Última cópia: ${dayName(isoOf(new Date(last)))} (${new Date(last).toLocaleDateString("pt-PT")}).` : "Ainda não fez nenhuma cópia." }),
       el("div", { class: "btnrow" },
         el("button", { type: "button", class: "btn primary", text: "Fazer cópia", onclick: doBackup }),
         el("button", { type: "button", class: "btn", text: "Restaurar cópia", onclick: () => fileIn.click() }),
         el("button", { type: "button", class: "btn", text: "Exportar para Excel", onclick: exportCsv })),
-      fileIn, el("div", { id: "restoreBox" })));
+      fileIn, el("div", { id: "restoreBox" })]));
 
     body.append(el("p", { class: "muted", style: "text-align:center", text: `Caderneta de Gastos · versão ${APP_VERSION} · ${data.entries.length} lançamentos guardados` }));
   }
 
   function catEditor(t) {
-    const panel = el("section", { class: "panel" }, el("h2", { class: "panel-title", text: t === "out" ? "Categorias de gastos" : "Categorias de entradas" }),
+    const panel = el("div", { class: "stack" }, el("h3", { class: "panel-title", text: t === "out" ? "Gastos" : "Entradas" }),
       el("p", { class: "muted", text: t === "out" ? "Toque no ícone para o trocar. Defina um limite por mês para receber um aviso aos 80% e ao passar." : "Toque no ícone para o trocar." }));
     const used = new Set(data.entries.filter((e) => e.t === t).map((e) => e.cat));
     for (const c of catList(t)) {
@@ -1405,9 +1575,10 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.4.0";
+  const APP_VERSION = "1.5.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
+    if (!$("lock").hidden) return false;
     if ($("formDlg").open) { $("formDlg").close(); return true; }
     if (view !== "lancar") { location.hash = "#lancar"; return true; }
     return false;
@@ -1424,6 +1595,22 @@
     else { toast("Leitura de SMS ativa. Pode importar as mensagens dos últimos 30 dias em Ajustes."); }
     if (view === "ajustes") renderView();
   };
+  if (pinRec()) { protectScreen(true); showLock(); } else unlock();
+  // Primeira vez: perguntar o nome (uma só vez)
+  if (!data.profile.name && !data.profile.asked) {
+    data.profile.asked = true; save();
+    openForm({
+      title: "Bem-vindo à Caderneta",
+      intro: "Como se chama? O nome aparece na saudação. Em Ajustes pode pôr foto e criar um código de acesso.",
+      fields: [{ id: "name", label: "Nome", type: "text", placeholder: "O seu nome", maxlength: 40 }],
+      submit: "Começar",
+      onSubmit: (v) => { data.profile.name = v.name.trim(); save(); renderView(); }
+    });
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (pinRec() && unlocked && hiddenAt && Date.now() - hiddenAt > LOCK_AFTER) showLock();
+  });
   pullSms();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) pullSms(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden && today() !== lastDay) { lastDay = today(); viewMonth = monthOf(lastDay); $("date").value = lastDay; renderView(); } });
