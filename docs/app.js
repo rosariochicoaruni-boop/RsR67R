@@ -214,7 +214,14 @@
     const c = catById(e.t, e.cat);
     return { title: e.note || c.name, sub: (e.note ? c.name + " · " : "") + walletById(e.w).name, icon: c.icon, color: c.color, amount: (e.t === "in" ? "+" : "−") + fmt(e.v), cls: e.t === "in" ? " in" : "" };
   }
-  function iconTile(icon, color) { return el("span", { class: "tx-ic" }, svg(icon), color ? el("i", { style: `background:${color}` }) : null); }
+  // Mistura a cor da categoria com branco (fundo suave dos ícones no layout Finanças)
+  function tint(hex, k = 0.16) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return "#e8edfb";
+    const n = parseInt(m[1], 16), mix = (c) => Math.round(255 - (255 - c) * k);
+    return `rgb(${mix(n >> 16)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`;
+  }
+  const colorVars = (c) => c ? `--c:${c};--cbg:${tint(c)}` : "";
+  function iconTile(icon, color) { return el("span", { class: "tx-ic", style: colorVars(color) }, svg(icon), color ? el("i", { style: `background:${color}` }) : null); }
 
   // ================= Ponte com o APK =================
   const android = window.CadernetaAndroid || null;
@@ -544,6 +551,20 @@
   }
   function clearPin() { localStorage.removeItem(PIN_KEY); protectScreen(false); }
   async function checkPin(pin) { const r = pinRec(); return !!r && (await hashPin(pin, r.salt)) === r.hash; }
+  // ================= Layouts (Aparência) =================
+  const THEMES = {
+    marinho: { name: "Marinho", desc: "Cabeçalho escuro em onda, botão Lançar redondo ao centro", sw: ["#0d1033", "#e9eff9", "#ffffff"], darkIcons: false, bar: "#0d1033" },
+    financas: { name: "Finanças", desc: "Claro, cartões em azul e ícones coloridos, botão + verde", sw: ["#2f54d6", "#34c38f", "#f3f5fa"], darkIcons: true, bar: "#ffffff" },
+    classico: { name: "Clássico", desc: "Cabeçalho índigo, quadrados brancos, barra flutuante", sw: ["#262e6e", "#29a8e0", "#f6f7fb"], darkIcons: false, bar: "#f6f7fb" }
+  };
+  function applyTheme() {
+    const t = THEMES[data.settings.theme] ? data.settings.theme : "marinho";
+    document.documentElement.dataset.tema = t;
+    const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = THEMES[t].sw[0];
+    if (android && android.barras) { try { android.barras(THEMES[t].darkIcons, THEMES[t].bar); } catch (e) { /* ignorar */ } }
+  }
+  function setTheme(t) { data.settings.theme = t; save(); applyTheme(); renderView(); toast(`Layout ${THEMES[t].name} aplicado`); }
+
   function protectScreen(on) { if (android && android.proteger) { try { android.proteger(on); } catch (e) { /* ignorar */ } } }
 
   let lockInput = "", unlocked = false, hiddenAt = 0;
@@ -732,7 +753,7 @@
     const grid = $("catGrid"); grid.replaceChildren();
     const cats = catList(launch.type);
     grid.classList.toggle("few", cats.length <= 6);
-    for (const c of cats) grid.append(el("button", { type: "button", class: "action", onclick: () => commit(c) }, svg(c.icon), el("span", { text: c.name })));
+    for (const c of cats) grid.append(el("button", { type: "button", class: "action", style: colorVars(c.color), onclick: () => commit(c) }, svg(c.icon), el("span", { text: c.name })));
 
     const ws = usedWallets();
     if (!ws.some((w) => w.id === launch.w)) launch.w = ws[0] ? ws[0].id : "dinheiro";
@@ -1404,6 +1425,17 @@
       el("button", { type: "button", class: "btn primary", text: "Guardar perfil", onclick: saveProfile })
     ], !pr.name));
 
+    // Aparência: escolher um dos três layouts
+    const curT = THEMES[data.settings.theme] ? data.settings.theme : "marinho";
+    body.append(fold("aparencia", "Aparência", THEMES[curT].name, [
+      el("p", { class: "muted", text: "Escolha o layout da Caderneta. Os seus dados não mudam." }),
+      el("div", { class: "theme-list" }, ...Object.entries(THEMES).map(([id, t]) =>
+        el("button", { type: "button", class: "theme-opt", "aria-pressed": String(id === curT), onclick: () => setTheme(id) },
+          el("span", { class: "theme-sw" }, ...t.sw.map((c) => el("i", { style: `background:${c}` }))),
+          el("span", { class: "theme-txt" }, el("b", { text: t.name }), el("span", { text: t.desc })),
+          el("span", { class: "theme-check", text: id === curT ? "✓" : "" }))))
+    ]));
+
     // Código de acesso
     const hasPin = !!pinRec();
     body.append(fold("codigo", "Código de acesso", hasPin ? "ativo" : "desligado", [
@@ -1575,7 +1607,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.6.0";
+  const APP_VERSION = "1.7.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if (!$("lock").hidden) return false;
@@ -1595,6 +1627,7 @@
     else { toast("Leitura de SMS ativa. Pode importar as mensagens dos últimos 30 dias em Ajustes."); }
     if (view === "ajustes") renderView();
   };
+  applyTheme();
   if (pinRec()) { protectScreen(true); showLock(); } else unlock();
   // Primeira vez: perguntar o nome (uma só vez)
   if (!data.profile.name && !data.profile.asked) {

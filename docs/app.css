@@ -345,3 +345,107 @@ body.locked main, body.locked .tabs, body.locked .toast { visibility: hidden; }
   .actions-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .bank-number { font-size: 1.5rem; }
 }
+
+/* ---------- Escolha do layout (Ajustes → Aparência) ---------- */
+.theme-list { display: flex; flex-direction: column; gap: 10px; }
+.theme-opt { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 12px; align-items: center; text-align: left; border: 2px solid var(--line); background: var(--card); border-radius: 16px; padding: 10px 12px; color: var(--ink); }
+.theme-opt[aria-pressed="true"] { border-color: var(--accent); }
+.theme-sw { display: grid; grid-template-columns: 1fr 1fr; width: 46px; height: 46px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.theme-sw i:first-child { grid-row: span 2; }
+.theme-txt { display: flex; flex-direction: column; min-width: 0; }
+.theme-txt b { font-weight: 700; }
+.theme-txt span { font-size: .74rem; color: var(--muted); }
+.theme-check { color: var(--accent); font-weight: 700; font-size: 1.1rem; }
+
+/* =====================================================================
+   Layout FINANÇAS — claro, cartões em degradê azul, ícones coloridos, + verde
+   ===================================================================== */
+html[data-tema="financas"] {
+  --navy: #2f54d6; --navy-2: #2446b8; --bg: #f3f5fa; --card: #ffffff; --field: #f1f3f8; --line: #e4e8f2;
+  --ink: #1c2240; --muted: #7a82a0; --accent: #2f54d6; --green: #34c38f; --soft: #eef2fd;
+  --shadow: 0 8px 22px -14px rgba(28, 34, 64, .35);
+}
+html[data-tema="financas"] main { background: var(--bg); }
+html[data-tema="financas"] .page-head, html[data-tema="financas"] .hello, html[data-tema="financas"] .hero-total { color: var(--ink); }
+html[data-tema="financas"] .hello .avatar { border-color: var(--card); background: var(--accent); box-shadow: var(--shadow); }
+html[data-tema="financas"] .monthnav { background: var(--card); border-color: transparent; box-shadow: var(--shadow); }
+html[data-tema="financas"] .mbtn { color: var(--ink); }
+html[data-tema="financas"] .mbtn:active { background: var(--field); }
+/* cartões principais em degradê azul */
+html[data-tema="financas"] .entry-card, html[data-tema="financas"] .bank-card { background: linear-gradient(140deg, #3d63e6 0%, #2442b5 100%); color: #fff; box-shadow: 0 14px 30px -16px rgba(47,84,214,.8); }
+html[data-tema="financas"] .entry-total, html[data-tema="financas"] .bank-number, html[data-tema="financas"] .bank-bottom b, html[data-tema="financas"] .bank-today b { color: #fff; }
+html[data-tema="financas"] .entry-total .cur, html[data-tema="financas"] .entry-expr, html[data-tema="financas"] .entry-hint,
+html[data-tema="financas"] .bank-label, html[data-tema="financas"] .bank-month, html[data-tema="financas"] .bank-today, html[data-tema="financas"] .bank-bottom, html[data-tema="financas"] .bank-number .cur { color: rgba(255,255,255,.8); }
+html[data-tema="financas"] .entry-card.in .entry-total #total { color: #b9f5da; }
+html[data-tema="financas"] .entry-card.shake .entry-hint { color: #ffd6d6; }
+html[data-tema="financas"] .bank-bottom { border-top-color: rgba(255,255,255,.25); }
+html[data-tema="financas"] .bank-mark { background: rgba(255,255,255,.2); }
+html[data-tema="financas"] .entry-meta { background: rgba(255,255,255,.18); color: #fff; }
+html[data-tema="financas"] .seg { background: rgba(255,255,255,.18); }
+html[data-tema="financas"] .seg button { color: rgba(255,255,255,.8); }
+html[data-tema="financas"] .seg button[aria-pressed="true"] { background: #fff; color: var(--accent); }
+/* ícones coloridos em fundo suave */
+html[data-tema="financas"] .action svg { background: var(--cbg, var(--soft)); stroke: var(--c, var(--accent)); border-radius: 12px; }
+html[data-tema="financas"] .action span { font-weight: 400; color: var(--ink); }
+html[data-tema="financas"] .action:active svg { filter: brightness(.95); }
+html[data-tema="financas"] .tx-ic { background: var(--cbg, var(--soft)); border-radius: 12px; }
+html[data-tema="financas"] .tx-ic svg { stroke: var(--c, var(--accent)); }
+html[data-tema="financas"] .tx-ic i { display: none; }
+html[data-tema="financas"] .icon-pick, html[data-tema="financas"] .wallet-card .wc-top svg { background: var(--soft); stroke: var(--accent); }
+html[data-tema="financas"] .icon-pick svg { stroke: var(--accent); }
+/* botões e campos com cantos suaves */
+html[data-tema="financas"] .btn { border-radius: 12px; border-color: var(--accent); color: var(--accent); }
+html[data-tema="financas"] .btn.primary { background: var(--accent); color: #fff; }
+html[data-tema="financas"] .btn.danger-outline { border-color: var(--out); color: var(--out); }
+html[data-tema="financas"] .btn.danger { color: #fff; }
+html[data-tema="financas"] input, html[data-tema="financas"] select { border-radius: 12px; background: #fff; border: 1px solid var(--line); }
+html[data-tema="financas"] input:focus, html[data-tema="financas"] select:focus { border-color: var(--accent); }
+html[data-tema="financas"] .keypad .plus { background: var(--green); }
+html[data-tema="financas"] .meter > span { background: var(--accent); }
+html[data-tema="financas"] .meter.full > span { background: var(--green); }
+html[data-tema="financas"] .pill-pct { background: var(--accent); border-radius: 6px; }
+html[data-tema="financas"] .panel, html[data-tema="financas"] .tile, html[data-tema="financas"] .glass-card { border-radius: 18px; }
+/* barra de baixo branca com + verde ao centro */
+html[data-tema="financas"] .tabs { background: #fff; border-radius: 0; box-shadow: 0 -6px 24px -12px rgba(28,34,64,.25); }
+html[data-tema="financas"] .tabs a { color: #9aa3bf; font-weight: 400; }
+html[data-tema="financas"] .tabs a[aria-current="page"] { color: var(--accent); font-weight: 600; }
+html[data-tema="financas"] .tabs a.center .tab-ic { background: var(--green); color: #fff; border-color: #fff; box-shadow: 0 8px 18px -6px rgba(52,195,143,.7); }
+html[data-tema="financas"] .tabs a.center[aria-current="page"] .tab-ic { background: var(--green); color: #fff; }
+html[data-tema="financas"] .toast { background: var(--ink); border-radius: 12px; }
+html[data-tema="financas"] #lock { background: linear-gradient(160deg, #3d63e6, #1e3aa8); }
+
+/* =====================================================================
+   Layout CLÁSSICO — cabeçalho índigo, quadrados brancos, barra flutuante
+   ===================================================================== */
+html[data-tema="classico"] {
+  --navy: #262e6e; --navy-2: #323b85; --bg: #f6f7fb; --card: #ffffff; --field: #eff2f8; --line: #e2e6f0;
+  --ink: #1f2559; --muted: #7b81a3; --accent: #29a8e0; --soft: #eef6fc;
+  --shadow: 0 10px 24px -16px rgba(38, 46, 110, .45);
+}
+html[data-tema="classico"] main { background: linear-gradient(var(--navy), var(--navy)) top center / 100% calc(var(--inset-top) + 190px) no-repeat local, var(--bg); }
+html[data-tema="classico"] .page-head h1 { font-weight: 700; font-style: italic; }
+html[data-tema="classico"] .monthnav { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.25); border-radius: 10px; }
+html[data-tema="classico"] .action svg { background: #fff; stroke: var(--navy); border: 1.5px solid var(--line); border-radius: 10px; box-shadow: 0 4px 10px -8px rgba(38,46,110,.6); }
+html[data-tema="classico"] .action span { font-weight: 400; color: var(--ink); }
+html[data-tema="classico"] .action:active svg { border-color: var(--accent); }
+html[data-tema="classico"] .tx-ic, html[data-tema="classico"] .icon-pick, html[data-tema="classico"] .wallet-card .wc-top svg, html[data-tema="classico"] .bank-mark { border-radius: 10px; }
+html[data-tema="classico"] .btn { border-radius: 8px; }
+html[data-tema="classico"] .btn.primary { box-shadow: 0 8px 16px -8px rgba(38,46,110,.7); }
+html[data-tema="classico"] input, html[data-tema="classico"] select { border-radius: 8px; background: var(--field); }
+html[data-tema="classico"] input:focus, html[data-tema="classico"] select:focus { border-color: var(--accent); background: #fff; }
+html[data-tema="classico"] .chip { border-radius: 8px; }
+html[data-tema="classico"] .seg, html[data-tema="classico"] .seg button, html[data-tema="classico"] .seg-inline, html[data-tema="classico"] .seg-inline button { border-radius: 8px; }
+html[data-tema="classico"] .keypad button { border-radius: 10px; }
+html[data-tema="classico"] .keypad .plus { background: var(--accent); }
+html[data-tema="classico"] .pill-pct { border-radius: 6px; }
+html[data-tema="classico"] .panel, html[data-tema="classico"] .tile, html[data-tema="classico"] .glass-card { border-radius: 14px; }
+/* barra de baixo flutuante, item ativo em pílula branca */
+html[data-tema="classico"] .tabs { left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); border-radius: 18px; padding: 8px; align-items: center; box-shadow: 0 12px 26px -12px rgba(38,46,110,.8); }
+html[data-tema="classico"] .tabs a { flex-direction: row; justify-content: center; gap: 6px; padding: 8px 4px; border-radius: 12px; font-size: 0; }
+html[data-tema="classico"] .tabs a .tab-ic { width: auto; height: auto; }
+html[data-tema="classico"] .tabs a[aria-current="page"] { background: #fff; color: var(--navy); font-size: .7rem; }
+html[data-tema="classico"] .tabs a.center .tab-ic { width: auto; height: auto; margin: 0; border: 0; background: transparent; color: inherit; border-radius: 0; }
+html[data-tema="classico"] .tabs a.center .tab-ic svg { width: 22px; height: 22px; stroke-width: 1.7; }
+html[data-tema="classico"] .tabs a.center[aria-current="page"] .tab-ic { background: transparent; color: var(--navy); }
+html[data-tema="classico"] .toast { border-radius: 10px; bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom, 0px) + 24px); }
+html[data-tema="classico"] #lock .lock-pad button { border-radius: 14px; }
