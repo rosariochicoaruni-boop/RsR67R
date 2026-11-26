@@ -301,7 +301,8 @@
     return isFinite(v) && int !== "" ? Math.round(v * 100) : null;
   }
   const AMT = "(\\d[\\d.,]*)\\s?MT";
-  const titleCase = (t) => t.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase()).trim();
+  // "AFONSO MAURICIO" -> "Afonso Mauricio"; siglas curtas (EDM, BCI) ficam em maiúsculas
+  const titleCase = (t) => t.trim().split(/\s+/).map((w) => (w.length <= 3 && /^[A-Z]+$/.test(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
   const normParty = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, " ").trim();
   const WALLET_LABEL = { emola: "e-Mola", mpesa: "M-Pesa", banco: "Banco" };
 
@@ -315,6 +316,12 @@
     let kind = null, amount = null, party = "", content = "", m;
     const failed = /falhou|sem sucesso|n[aã]o tens saldo|saldo insuficiente|n[aã]o foi poss[ií]vel/i.test(b);
     if (failed) { /* não houve movimento: só o saldo conta */ }
+    else if (/EDM\s+Credelec/i.test(b) && (m = r("Recarga\\s+([\\d ]{10,}?)\\s+Contador"))) {
+      // recibo da EDM: não é um novo gasto; junta o código de recarga ao pagamento
+      const kwh = r("Energia\\s+([\\d.,]+)\\s*kwh"), tot = r("Total Pago\\s+([\\d.,]+)\\s*MT");
+      return { wallet, kind: "credelec", token: m[1].trim(), kwh: kwh ? kwh[1] : "", amount: tot ? smsNum(tot[1]) : 0, ts: ts || Date.now(), id: null, body: b, fee: 0, bal: null, party: "", content: "", d: isoOf(new Date(ts || Date.now())) };
+    }
+    else if ((m = r("opera[cç][aã]o de compra no valor de " + AMT + ".*?(?:na entidade|entidade)\\s+(.+?)\\s+(?:com refer|aos\\b)"))) { kind = "out"; amount = smsNum(m[1]); party = m[2]; }
     else if ((m = r("levantamento de " + AMT)) || (m = r("Levanta(?:ste|u) " + AMT))) { kind = "withdraw"; amount = smsNum(m[1]); }
     else if ((m = r("Compra(?:ste|u) (.+?) atrav[eé]s d[oe] M-?Pesa")) && (m = [m[0], m[1], r("no valor de " + AMT)]) && m[2]) {
       kind = "out"; amount = smsNum(m[2][1]); party = "Vodacom"; content = m[1].trim();
@@ -391,6 +398,13 @@
     const base = { d: p.d, ts: p.ts, w: p.wallet, auto: true, sms: key };
     const note = p.party === "Vodacom" && p.content ? `${p.content} (M-Pesa)` : (p.party || p.content || "");
     let n = 0;
+    if (p.kind === "credelec") {
+      const pay = data.entries.filter((e) => e.auto && e.t === "out" && normParty(e.party) === "edm" && !e.token && Math.abs(e.ts - p.ts) < 6 * 3600e3 && (!p.amount || e.v === p.amount))
+        .sort((a, b) => Math.abs(a.ts - p.ts) - Math.abs(b.ts - p.ts))[0];
+      if (pay) { pay.token = p.token; pay.note = `EDM · recarga ${p.token}${p.kwh ? ` (${p.kwh} kWh)` : ""}`; }
+      data.smsSeen.push(key);
+      return 0;
+    }
     if (p.kind === "bal") { /* só acerto de saldo */ }
     else if (p.kind === "withdraw") {
       data.entries.push({ id: uid(), t: "tr", v: p.amount, w2: "dinheiro", note: "Levantamento no agente", ...base }); n++;
@@ -1278,7 +1292,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.3.2";
+  const APP_VERSION = "1.3.3";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if ($("formDlg").open) { $("formDlg").close(); return true; }
