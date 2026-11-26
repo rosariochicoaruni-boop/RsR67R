@@ -312,32 +312,55 @@
     const wallet = /e-?mola/.test(low) ? "emola" : /m-?pesa/.test(low) ? "mpesa"
       : /\b(bci|bim|millennium|standard ?bank|absa|moza|banco|fnb|nedbank|letshego|access bank|ecobank|socremo|bni)\b/.test(low) ? "banco" : null;
     if (!wallet || !/\d\s?MT/i.test(b)) return null;
-    let kind = null, amount = null, party = "", m;
-    if ((m = r("levantamento de " + AMT))) { kind = "withdraw"; amount = smsNum(m[1]); }
+    let kind = null, amount = null, party = "", content = "", m;
+    const failed = /falhou|sem sucesso|n[aã]o tens saldo|saldo insuficiente|n[aã]o foi poss[ií]vel/i.test(b);
+    if (failed) { /* não houve movimento: só o saldo conta */ }
+    else if ((m = r("levantamento de " + AMT)) || (m = r("Levanta(?:ste|u) " + AMT))) { kind = "withdraw"; amount = smsNum(m[1]); }
+    else if ((m = r("Compra(?:ste|u) (.+?) atrav[eé]s d[oe] M-?Pesa")) && (m = [m[0], m[1], r("no valor de " + AMT)]) && m[2]) {
+      kind = "out"; amount = smsNum(m[2][1]); party = "Vodacom"; content = m[1].trim();
+    }
+    else if ((m = r("Recebe(?:u|ste) " + AMT + " (?:de|do|da) (?:Nib\\s+)?\\+?[\\d ]+\\s*-\\s*(.+?)\\s+aos\\b"))) { kind = "in"; amount = smsNum(m[1]); party = m[2]; }
     else if ((m = r("Recebe(?:u|ste) " + AMT + " de ([^,]+),\\s*(.+?)\\s+(?:as|às)\\b"))) { kind = "in"; amount = smsNum(m[1]); party = m[3]; }
     else if ((m = r("Recebe(?:u|ste) " + AMT + "(?: de (.+?)(?:\\s+(?:as|às)\\b|[.,]))?"))) { kind = "in"; amount = smsNum(m[1]); party = m[2] || ""; }
-    else if ((m = r("Transferi(?:ste|u) " + AMT))) { kind = "out"; amount = smsNum(m[1]); const n = r("nome:\\s*(.+?)\\s+(?:as|às)\\b"); party = n ? n[1] : ""; }
+    else if ((m = r("Transferi(?:ste|u) " + AMT))) {
+      kind = "out"; amount = smsNum(m[1]);
+      const n = r("nome:\\s*(.+?)\\s+(?:as|às)\\b") || r("para\\s+\\+?\\d{6,}\\s*-\\s*(.+?)\\s+aos\\b") || r("para\\s+(\\+?\\d{6,})\\s+aos\\b");
+      party = n ? n[1] : "";
+    }
     else if ((m = r("pagamento de " + AMT + "\\s+(?:para|a|ao|à)\\s+(.+?)(?:\\s+(?:as|às)\\b|\\.\\s|,|$)"))) { kind = "out"; amount = smsNum(m[1]); party = m[2]; }
     else if ((m = r("(?:pagamento|compra|d[ée]bito|envio|enviou|envias?te|pagou|pagaste) de " + AMT))) { kind = "out"; amount = smsNum(m[1]); }
     else if ((m = r("(?:cr[ée]dito|dep[óo]sito|recebimento) de " + AMT))) { kind = "in"; amount = smsNum(m[1]); }
-    if (!kind || !amount) return null;
-    const fee = r("Taxa:?\\s*" + AMT);
     const bal = r("saldo[^0-9]{0,30}?" + AMT);
-    const id = r("ID (?:Trans|da Transac[cç]?[aã]o)[:\\s]+([A-Za-z0-9.]+?)\\.(?:\\s|$)");
+    // Sem movimento (falhou, consulta de saldo): serve só para acertar o saldo
+    if (!kind && bal && (failed || /confirmado|o teu saldo|o seu saldo/i.test(b))) { kind = "bal"; amount = 0; }
+    if (!kind || (kind !== "bal" && !amount)) return null;
+    const fee = r("Taxa(?: foi)?(?: de)?:?\\s*" + AMT);
+    const id = r("ID (?:Trans|da Transac[cç]?[aã]o)[:\\s]+([A-Za-z0-9.]+?)\\.(?:\\s|$)") || r("Confirmado ([A-Z0-9]{8,})\\b") || r("\\b([A-Z0-9]{8,}) confirmado");
     const cont = r("Conte[uú]do:\\s*(.+?)\\.\\s");
     const when = r("(\\d{2}):(\\d{2})(?::\\d{2})?\\s+(?:de\\s+)?(\\d{2})/(\\d{2})/(\\d{4})");
     let d = isoOf(new Date(ts || Date.now())), t = ts || Date.now();
     if (when) { d = `${when[5]}-${when[4]}-${when[3]}`; t = new Date(+when[5], +when[4] - 1, +when[3], +when[1], +when[2]).getTime(); }
-    party = party.replace(/^\d{6,}\s*,?\s*/, "").trim();
+    else {
+      // M-Pesa: "aos 9/11/26 as 6:46 PM" ou "no dia 2/11/26 as 9:29 AM"
+      const w2 = r("(\\d{1,2})/(\\d{1,2})/(\\d{2,4})\\s+(?:as|às)\\s+(\\d{1,2}):(\\d{2})\\s*(AM|PM)?");
+      if (w2) {
+        let y = +w2[3]; if (y < 100) y += 2000;
+        let h = +w2[4]; if (w2[6]) { const pm = /pm/i.test(w2[6]); if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
+        const dt = new Date(y, +w2[2] - 1, +w2[1], h, +w2[5]);
+        if (!isNaN(dt)) { d = isoOf(dt); t = dt.getTime(); }
+      }
+    }
+    if (!/^\+?\d{6,}$/.test(party.trim())) party = party.replace(/^\d{6,}\s*,?\s*/, "");
+    party = party.trim();
     return { wallet, kind, amount, fee: fee ? smsNum(fee[1]) : 0, bal: bal ? smsNum(bal[1]) : null, id: id ? id[1] : null,
-      party: party ? titleCase(party) : "", content: cont ? cont[1].trim() : "", d, ts: t, body: b };
+      party: party ? (/^\+?\d+$/.test(party) ? party : titleCase(party)) : "", content: content || (cont ? cont[1].trim() : ""), d, ts: t, body: b };
   }
 
   // Empresas conhecidas: categoria automática (pode ser mudada; a escolha passa a valer depois)
   function knownParty(party, kind) {
     if (kind !== "out") return null;
     const n = normParty(party);
-    if (/\b(movitel|vodacom|tmcel|mcel)\b/.test(n)) return "cred";
+    if (/\b(movitel|vodacom|tmcel|mcel|megas?|mb|gb|mins?|pacote)\b/.test(n)) return "cred";
     if (/\b(edm|credelec|electricidade|fipag|aguas?)\b/.test(n)) return "energ";
     if (/\b(farmacia|clinica|hospital)\b/.test(n)) return "saude";
     if (/\b(shoprite|spar|pick n pay|game|mercado|supermercado)\b/.test(n)) return "merc";
@@ -360,15 +383,16 @@
   }
   function applySms(p) {
     const key = p.id || ("h" + Array.from(p.body).reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
-    if (data.smsSeen.includes(key)) return 0;
+    if (data.smsSeen.includes(key)) return -1;
     const w = walletById(p.wallet);
     if (!wallets().some((x) => x.id === p.wallet)) return 0;
     w.show = true;
     const rule = p.party ? (data.smsRules[normParty(p.party)] || knownParty(p.party, p.kind)) : null;
     const base = { d: p.d, ts: p.ts, w: p.wallet, auto: true, sms: key };
-    const note = p.party || p.content || "";
+    const note = p.party === "Vodacom" && p.content ? `${p.content} (M-Pesa)` : (p.party || p.content || "");
     let n = 0;
-    if (p.kind === "withdraw") {
+    if (p.kind === "bal") { /* só acerto de saldo */ }
+    else if (p.kind === "withdraw") {
       data.entries.push({ id: uid(), t: "tr", v: p.amount, w2: "dinheiro", note: "Levantamento no agente", ...base }); n++;
     } else {
       const t = p.kind;
@@ -390,9 +414,9 @@
   // Recebe mensagens {from, body, ts} e cria os lançamentos. Devolve quantos movimentos entraram.
   function processSms(list) {
     const parsed = list.map((x) => parseSms(x.from, x.body, x.ts)).filter(Boolean).sort((a, b) => a.ts - b.ts);
-    let moves = 0;
-    for (const p of parsed) if (applySms(p)) moves++;
-    if (moves) { save(); }
+    let moves = 0, changed = false;
+    for (const p of parsed) { const k = applySms(p); if (k > 0) moves++; if (k >= 0) changed = true; }
+    if (changed) save();
     return moves;
   }
   function pullSms(showToast = true) {
@@ -1134,7 +1158,7 @@
       smsPanel.append(
         el("p", { class: "muted", text: "Quando chega uma SMS de pagamento, envio, recebimento ou levantamento, a Caderneta cria o lançamento e acerta o saldo da carteira com o saldo real da mensagem. As mensagens são lidas só neste telemóvel; nada é enviado para fora." }),
         el("label", { class: "switch" }, el("span", { text: "Ler SMS automaticamente" }), sw),
-        el("p", { class: "muted", text: "e-Mola: reconhecido. M-Pesa e bancos: leitura experimental (mande exemplos para melhorar)." }),
+        el("p", { class: "muted", text: "e-Mola e M-Pesa: reconhecidos. Bancos: leitura experimental (mande exemplos para melhorar)." }),
         on ? el("button", { type: "button", class: "btn", text: "Importar SMS dos últimos 30 dias", onclick: () => {
           let list = []; try { list = JSON.parse(android.lerSmsAntigas(30) || "[]"); } catch (e) { list = []; }
           const n = processSms(list); renderView();
@@ -1254,7 +1278,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.3.1";
+  const APP_VERSION = "1.3.2";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if ($("formDlg").open) { $("formDlg").close(); return true; }
