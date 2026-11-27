@@ -31,3 +31,9 @@ Envios para outros ramos geram uma **prévia** (pré-lançamento `previa`) para 
 Em **Ajustes › Ler SMS**, a Caderneta lê as SMS de movimentos do e-Mola (e, de forma experimental, M-Pesa e bancos),
 cria os lançamentos e acerta o saldo da carteira com o saldo da mensagem. As mensagens ficam só no telemóvel.
 Os formatos reconhecidos estão em `parseSms()` (`docs/app.js`).
+
+## Integração com o LAF financeiro (APK)
+Em **Ajustes › LAF financeiro**: endereço do servidor (ex.: `cotacoes.lafwoodworking.com`) e a mesma
+chave de acesso (`API_KEY`) do app LAF. Cada gasto e cada entrada é enviado ao `api.php` do LAF
+(acção `sync`) como registo `expenses`/`payments`, com o tipo "Pessoal – categoria". Edições e apagados
+também são enviados; transferências entre carteiras e metas não. O pedido é feito pelo APK (`lafPedido`).

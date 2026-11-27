@@ -61,6 +61,44 @@
     ["dinheiro", "Dinheiro", "cash", true], ["mpesa", "M-Pesa", "phone", true], ["emola", "e-Mola", "phone", true],
     ["mkesh", "mKesh", "phone", false], ["banco", "Banco", "bank", false]
   ];
+  // Modo empresarial: os tipos de despesa e de receita são os do LAF financeiro
+  const LAF_GROUPS = {
+    OPERATING: { name: "Despesas gerais", color: "#5b9dff" },
+    PRODUCTION: { name: "Produção", color: "#ff9f5a" },
+    SALARY: { name: "Salários", color: "#4fd1a1" },
+    TAX: { name: "Impostos", color: "#ff6b8b" },
+    INVESTMENT: { name: "Investimentos", color: "#a58bff" }
+  };
+  const LAF_DEFAULT_TYPES = {
+    OPERATING: ["Renda", "Energia", "Água", "Internet e telefone", "Combustível", "Manutenção de máquinas", "Material de escritório", "Limpeza e segurança", "Outras despesas"],
+    PRODUCTION: ["Mão de obra", "Transporte", "Serviço externo", "Compra directa de material", "Outros"],
+    SALARY: ["Salário", "Adiantamento"],
+    TAX: ["IVA", "IRPC / ISPC", "INSS", "Licenças e taxas municipais"],
+    INVESTMENT: ["Máquinas e equipamentos", "Ferramentas", "Viatura", "Obras na oficina", "Mobiliário e informática", "Outros investimentos"],
+    INCOME: ["Venda de sobras / serradura", "Serviço avulso", "Capital dos sócios", "Empréstimo", "Outras receitas"]
+  };
+  const LAF_ICONS = [[/renda|obras|mobili|limpeza/i, "casa"], [/energia|água|agua/i, "energ"], [/internet|telefone/i, "cred"], [/combust|transporte|viatura/i, "transp"],
+    [/salário|adiantamento|mão de obra/i, "salario"], [/iva|irpc|inss|licen|taxa/i, "bank"], [/material|compra/i, "merc"], [/máquina|ferramenta|manuten|serviço externo/i, "doc"],
+    [/venda|serviço/i, "negocio"], [/capital|empréstimo/i, "coin"]];
+  const lafIcon = (name, group) => { const f = LAF_ICONS.find(([re]) => re.test(name)); return f ? f[1] : group === "INCOME" ? "outent" : "outros"; };
+  const isLafCat = (id) => typeof id === "string" && id.startsWith("laf:");
+  // Cria (ou atualiza) as categorias do modo empresarial a partir dos tipos do LAF, sem perder cores, ícones e limites
+  function buildLafCats(d, types) {
+    types = types || {};
+    const prev = d.lafCats || { out: [], in: [] };
+    const old = {}; for (const t of ["out", "in"]) for (const c of prev[t] || []) old[c.id] = c;
+    const used = new Set(d.entries.map((e) => e.cat));
+    const names = (g) => { const l = Array.isArray(types[g]) && types[g].length ? types[g] : LAF_DEFAULT_TYPES[g]; return [...new Set(l.map((x) => String(x).trim()).filter((x) => x && x !== "Material do armazém"))]; };
+    const make = (g, name) => {
+      const id = `laf:${g}:${name}`, o = old[id];
+      return { id, name, group: g, color: o ? o.color : (g === "INCOME" ? "#5fe3a1" : LAF_GROUPS[g].color), icon: o ? o.icon : lafIcon(name, g), limit: o ? o.limit || 0 : 0 };
+    };
+    const out = []; for (const g of Object.keys(LAF_GROUPS)) for (const n of names(g)) out.push(make(g, n));
+    const inc = names("INCOME").map((n) => make("INCOME", n));
+    // um tipo que deixou de existir no LAF mas tem lançamentos fica guardado (escondido)
+    for (const [t, list] of [["out", out], ["in", inc]]) for (const c of prev[t] || []) if (!list.some((x) => x.id === c.id) && used.has(c.id)) list.push({ ...c, off: true });
+    d.lafCats = { out, in: inc };
+  }
   const OLD_COLORS = { alim: "#d9752a", merc: "#2f9568", transp: "#7259c4", casa: "#4874a6", energ: "#b8941c", cred: "#2f93aa", saude: "#c9404f", famil: "#a85f22", lazer: "#984a8c", outros: "#7d8a85", salario: "#187a49", negocio: "#36985f", outent: "#5fae82" };
 
   function freshData() {
@@ -86,7 +124,13 @@
     if (!Array.isArray(d.smsSeen)) d.smsSeen = [];
     if (!d.smsRules) d.smsRules = {};
     if (!s.sms) s.sms = { on: false };
+    if (!s.laf) s.laf = { on: false, url: "cotacoes.lafwoodworking.com", key: "", lastSync: 0, lastError: "", sent: 0 };
+    if (!d.lafSent) d.lafSent = {};
+    if (!s.mode) s.mode = s.laf.on ? "empresa" : "individual";
+    if (!d.lafCats) buildLafCats(d, null);
     if (!d.profile) d.profile = { name: "", phone: "", email: "", photo: "" };
+    if (!d.cloud) d.cloud = { on: false, url: s.laf.url || "cotacoes.lafwoodworking.com", email: "", token: "", dev: "", devName: "", cursor: 0, lastSync: 0, lastError: "", sent: {}, devices: [] };
+    if (!d.cloud.dev) d.cloud.dev = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     // 1.4.0: levantamentos lidos das SMS passam a ficar "por dividir" (uma vez)
     if (!s.splitMigrated) {
       s.splitMigrated = true;
@@ -118,6 +162,8 @@
     catch (e) { toast("Não foi possível guardar. O armazenamento do telemóvel pode estar cheio."); }
     if (!persistAsked && navigator.storage && navigator.storage.persist) { persistAsked = true; navigator.storage.persist().catch(() => {}); }
     tellAndroidLastEntry();
+    if (typeof lafSchedule === "function") lafSchedule();
+    if (typeof cloudSchedule === "function") cloudSchedule();
   }
 
   // ================= Utilidades =================
@@ -181,8 +227,18 @@
     return Math.round(v * 100);
   }
 
-  const catList = (type) => data.cats[type];
-  const catById = (type, id) => (catList(type) || []).find((c) => c.id === id) || { id, name: "Sem categoria", color: "#9aa6c8", icon: "tag" };
+  const empresa = () => data.settings.mode === "empresa";
+  // categorias em uso: as pessoais (modo individual) ou os tipos do LAF (modo empresarial)
+  const catList = (type) => empresa() ? data.lafCats[type].filter((c) => !c.off) : data.cats[type];
+  const catById = (type, id) => (data.cats[type] || []).find((c) => c.id === id) || (data.lafCats[type] || []).find((c) => c.id === id) || { id, name: "Sem categoria", color: "#9aa6c8", icon: "tag" };
+  const catLabel = (c) => c.group && LAF_GROUPS[c.group] ? `${c.name} (${LAF_GROUPS[c.group].name})` : c.name;
+  // categoria para o que não se sabe (SMS sem regra, depósitos, taxas)
+  function defaultCat(t) {
+    if (!empresa()) return t === "in" ? "outent" : "outros";
+    const l = catList(t), want = t === "in" ? "Outras receitas" : "Outras despesas";
+    const c = l.find((x) => x.name === want) || l.find((x) => x.group === "OPERATING") || l[0];
+    return c ? c.id : (t === "in" ? "outent" : "outros");
+  }
   const sum = (list) => list.reduce((a, e) => a + e.v, 0);
   const inMonth = (m) => data.entries.filter((e) => monthOf(e.d) === m);
   const wallets = () => data.settings.wallets;
@@ -405,15 +461,31 @@
   }
 
   function ensureLevantCat() {
-    if (!catList("out").some((c) => c.id === "levant")) catList("out").push({ id: "levant", name: "Levantamentos", color: "#7fd8c0", icon: "cash" });
+    if (!data.cats.out.some((c) => c.id === "levant")) data.cats.out.push({ id: "levant", name: "Levantamentos", color: "#7fd8c0", icon: "cash" });
   }
   function ensureTaxasCat() {
-    if (!catList("out").some((c) => c.id === "taxas")) catList("out").push({ id: "taxas", name: "Taxas", color: "#c08bff", icon: "bank" });
+    if (!data.cats.out.some((c) => c.id === "taxas")) data.cats.out.push({ id: "taxas", name: "Taxas", color: "#c08bff", icon: "bank" });
+    return "taxas";
+  }
+  // regra aprendida/conhecida -> categoria válida no modo atual
+  const KNOWN_LAF = { cred: "Internet e telefone", energ: "Energia" };
+  function ruleCat(rule, t) {
+    if (!rule) return null;
+    if (catList(t).some((c) => c.id === rule)) return rule;
+    const c = empresa() && KNOWN_LAF[rule] && catList(t).find((x) => x.name === KNOWN_LAF[rule]);
+    return c ? c.id : null;
+  }
+  // quando o movimento aconteceu: a hora em que foi anotado, mas nunca depois do fim do dia escolhido
+  // (um gasto de ontem anotado hoje aconteceu antes da SMS de saldo de hoje)
+  function entryTime(e) {
+    const [y, m, dd] = String(e.d || "").split("-").map(Number);
+    const end = y ? new Date(y, m - 1, dd, 23, 59, 59, 999).getTime() : Infinity;
+    return Math.min(e.ts || end, end);
   }
   function balanceAt(id, ts) {
     let b = walletById(id).adj || 0;
     for (const e of data.entries) {
-      if ((e.ts || 0) > ts) continue;
+      if (entryTime(e) > ts) continue;
       if (e.t === "in" && e.w === id) b += e.v;
       else if (e.t === "out" && e.w === id) b -= e.v;
       else if (e.t === "tr") { if (e.w === id) b -= e.v; if (e.w2 === id) b += e.v; }
@@ -424,11 +496,12 @@
   function applySms(p) {
     const key = p.id || ("h" + Array.from(p.body).reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
     if (data.smsSeen.includes(key)) return -1;
-    const w = walletById(p.wallet);
-    if (!wallets().some((x) => x.id === p.wallet)) return 0;
+    if (!(cloudOn() && PHONE_WALLETS.includes(p.wallet)) && !wallets().some((x) => x.id === p.wallet)) return 0;
+    const wid = smsWallet(p.wallet);
+    const w = walletById(wid);
     w.show = true;
     const rule = p.party ? (data.smsRules[normParty(p.party)] || knownParty(p.party, p.kind)) : null;
-    const base = { d: p.d, ts: p.ts, w: p.wallet, auto: true, sms: key };
+    const base = { d: p.d, ts: p.ts, w: wid, auto: true, sms: key };
     const note = p.party === "Vodacom" && p.content ? `${p.content} (M-Pesa)` : (p.party || p.content || "");
     let n = 0;
     if (p.kind === "credelec") {
@@ -441,15 +514,15 @@
     }
     if (p.kind === "bal") { /* só acerto de saldo */ }
     else if (p.kind === "deposit") {
-      data.entries.push({ id: uid(), t: "in", v: p.amount, cat: "outent", note: "Depósito no agente", ...base }); n++;
+      data.entries.push({ id: uid(), t: "in", v: p.amount, cat: defaultCat("in"), note: "Depósito no agente", ...base }); n++;
     }
     else if (p.kind === "withdraw") {
       ensureLevantCat();
       data.entries.push({ id: uid(), t: "out", v: p.amount, cat: "levant", note: "Levantamento no agente", review: true, ...base }); n++;
     } else {
       const t = p.kind;
-      const cat = rule && catList(t).some((c) => c.id === rule) ? rule : (t === "in" ? "outent" : "outros");
-      const entry = { id: uid(), t, v: p.amount, cat, note, party: p.party, review: !rule, ...base };
+      const known = ruleCat(rule, t);
+      const entry = { id: uid(), t, v: p.amount, cat: known || defaultCat(t), note, party: p.party, review: !known, ...base };
       if (normParty(p.party) === "edm" && data.credelecPending) {
         const i = data.credelecPending.findIndex((c) => Math.abs(c.ts - p.ts) < 6 * 3600e3 && (!c.amount || c.amount === p.amount));
         if (i >= 0) { const c = data.credelecPending.splice(i, 1)[0]; entry.token = c.token; entry.note = `EDM · recarga ${c.token}${c.kwh ? ` (${c.kwh} kWh)` : ""}`; }
@@ -457,14 +530,14 @@
       data.entries.push(entry); n++;
     }
     if (p.fee > 0) {
-      ensureTaxasCat();
-      data.entries.push({ id: uid(), t: "out", v: p.fee, cat: "taxas", note: `Taxa ${WALLET_LABEL[p.wallet] || ""}`.trim(), ...base, ts: p.ts + 1 }); n++;
+      const feeCat = empresa() ? defaultCat("out") : ensureTaxasCat();
+      data.entries.push({ id: uid(), t: "out", v: p.fee, cat: feeCat, note: `Taxa ${WALLET_LABEL[p.wallet] || ""}`.trim(), ...base, ts: p.ts + 1 }); n++;
     }
     if (p.bal != null) {
-      w.adj = (w.adj || 0) + (p.bal - balanceAt(p.wallet, p.ts + 1));
+      w.adj = (w.adj || 0) + (p.bal - balanceAt(wid, p.ts + 1));
       w.syncedAt = p.ts; w.syncedBal = p.bal;
       data.settings.walletsSet = true;
-      syncedNow[p.wallet] = p.bal;
+      syncedNow[wid] = p.bal;
     }
     data.smsSeen.push(key);
     if (data.smsSeen.length > 2000) data.smsSeen = data.smsSeen.slice(-1500);
@@ -551,17 +624,319 @@
   }
   function clearPin() { localStorage.removeItem(PIN_KEY); protectScreen(false); }
   async function checkPin(pin) { const r = pinRec(); return !!r && (await hashPin(pin, r.salt)) === r.hash; }
+  // ================= Integração com o LAF financeiro =================
+  // Modo empresarial: cada gasto e cada entrada lançados num tipo do LAF são enviados para o servidor
+  // (api.php, acção "sync") como registo "expenses" ou "payments", com source "caderneta".
+  // Modo individual: nada é enviado. Transferências, metas, categorias pessoais e movimentos
+  // das SMS ainda por categorizar nunca são enviados.
+  const LAF_BASE = 8000000000000000; // ids da Caderneta no LAF (não colidem com os do LAF)
+  function lafId(entryId) {
+    let h1 = 0x811c9dc5, h2 = 0;
+    for (const ch of String(entryId)) { h1 = Math.imul(h1 ^ ch.charCodeAt(0), 16777619) >>> 0; h2 = (h2 * 31 + ch.charCodeAt(0)) % 256; }
+    return LAF_BASE + h1 * 256 + h2;
+  }
+  const lafSyncable = (e) => (e.t === "out" || e.t === "in") && isLafCat(e.cat) && !e.review;
+  function lafEntryDate(e) {
+    if (e.ts && isoOf(new Date(e.ts)) === e.d) return e.ts;
+    const [y, m, d] = e.d.split("-").map(Number); return new Date(y, m - 1, d, 12, 0).getTime();
+  }
+  function lafRecord(e, at) {
+    const [, group, ...rest] = e.cat.split(":"), type = rest.join(":"), w = walletById(e.w).name;
+    const note = [e.note && e.note !== type ? e.note : "", `Caderneta · ${w}`].filter(Boolean).join(" · ");
+    const id = lafId(e.id);
+    if (e.t === "out") {
+      const g = LAF_GROUPS[group] ? group : "OPERATING", salary = g === "SALARY";
+      return { kind: "expenses", id, updatedAt: at, deleted: false, data: {
+        id, date: lafEntryDate(e), quoteId: 0, type, description: note, value: e.v / 100, paid: true,
+        material: "", materialQty: 0, document: "", updatedAt: at, group: g, person: salary ? (e.note || "") : "", period: salary ? monthOf(e.d) : "", dueDate: 0, source: "caderneta" } };
+    }
+    return { kind: "payments", id, updatedAt: at, deleted: false, data: {
+      id, date: lafEntryDate(e), quoteId: 0, value: e.v / 100, method: w, note, updatedAt: at, category: type, receipt: "", source: "caderneta" } };
+  }
+  const lafHash = (r) => { const d = r.data; return [r.kind, d.date, d.value, d.type || d.category, d.group || "", d.description || d.note, d.method || "", d.source].join("|"); };
+  const lafCfg = () => data.settings.laf;
+  const lafReady = () => !!(android && android.lafPedido && empresa() && lafCfg().url && lafCfg().key);
+  const lafUrl = () => "https://" + lafCfg().url.replace(/^https?:\/\//i, "").replace(/\/+$/, "") + (/\.php$/i.test(lafCfg().url) ? "" : "/api.php");
+
+  // Pedido ao servidor feito pelo APK (sem limites de CORS); a resposta volta por __lafResposta
+  const lafWaiting = {};
+  window.__lafResposta = (id, status, text) => { const f = lafWaiting[id]; delete lafWaiting[id]; if (f) f(status, text); };
+  // Pedido JSON: no APK pelo Android (sem limites de CORS); no navegador por fetch
+  function postJson(url, body) {
+    if (!(android && android.lafPedido)) {
+      return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        .then(async (r) => { const text = await r.text(); let j = null; try { j = JSON.parse(text); } catch (e) { /* */ } return { status: r.status, json: j, text }; })
+        .catch(() => ({ status: 0, json: null, text: "" }));
+    }
+    return new Promise((resolve) => {
+      const id = uid(); lafWaiting[id] = (status, text) => { let j = null; try { j = JSON.parse(text); } catch (e) { /* */ } resolve({ status, json: j, text }); };
+      try { android.lafPedido(url, JSON.stringify(body), id); } catch (e) { delete lafWaiting[id]; resolve({ status: 0, json: null, text: String(e) }); }
+      setTimeout(() => { if (lafWaiting[id]) window.__lafResposta(id, 0, ""); }, 60000);
+    });
+  }
+  const lafPost = (body) => postJson(lafUrl(), body);
+  const lafErrorText = (r) => r.json && r.json.error ? r.json.error : r.status === 0 ? "Sem ligação ao servidor (verifique a internet e o endereço)." : `O servidor respondeu ${r.status}.`;
+
+  async function lafTest() {
+    const r = await lafPost({ action: "ping", key: lafCfg().key });
+    if (!(r.json && r.json.ok)) return { ok: false, error: lafErrorText(r) };
+    await lafRefreshTypes();
+    return { ok: true };
+  }
+  // Vai buscar os tipos de despesa e de receita definidos no LAF (acção "tipos").
+  // Servidor antigo sem esta acção: ficam os tipos de origem do LAF.
+  async function lafRefreshTypes() {
+    const r = await lafPost({ action: "tipos", key: lafCfg().key });
+    if (!(r.json && r.json.ok && r.json.tipos)) return false;
+    buildLafCats(data, r.json.tipos);
+    lafCfg().typesAt = Date.now();
+    persistOnly();
+    if (view === "lancar" || view === "ajustes") renderView();
+    return true;
+  }
+
+  let lafBusy = false, lafTimer = null;
+  function lafSchedule() { if (!lafReady()) return; clearTimeout(lafTimer); lafTimer = setTimeout(lafSync, 2500); }
+  async function lafSync(manual = false) {
+    if (!lafReady() || lafBusy) return null;
+    lafBusy = true;
+    try {
+      if (!lafCfg().typesAt || Date.now() - lafCfg().typesAt > 12 * 3600e3) await lafRefreshTypes();
+      const sent = data.lafSent, now = Date.now();
+      const pending = [], present = new Set();
+      for (const e of data.entries) {
+        if (!lafSyncable(e)) continue;
+        present.add(e.id);
+        const prev = sent[e.id];
+        const rec = lafRecord(e, Math.max(now, prev ? prev.at + 1 : 0));
+        const h = lafHash(rec);
+        if (!prev || prev.h !== h) pending.push({ entryId: e.id, rec, h });
+      }
+      for (const [entryId, prev] of Object.entries(sent)) {
+        if (!present.has(entryId)) pending.push({ entryId, rec: { kind: prev.kind, id: prev.id, updatedAt: Math.max(now, prev.at + 1), deleted: true, data: null }, del: true });
+      }
+      let done = 0;
+      for (let i = 0; i < pending.length; i += 150) {
+        const batch = pending.slice(i, i + 150);
+        // since muito alto: o servidor não devolve os dados da empresa, só confirma
+        const r = await lafPost({ action: "sync", key: lafCfg().key, since: 9e15, quotes: [], records: batch.map((x) => x.rec) });
+        if (!(r.json && r.json.ok)) { lafCfg().lastError = lafErrorText(r); persistOnly(); if (manual) toast("LAF financeiro: " + lafCfg().lastError); return { ok: false, error: lafCfg().lastError }; }
+        for (const x of batch) {
+          if (x.del) delete sent[x.entryId];
+          else sent[x.entryId] = { id: x.rec.id, kind: x.rec.kind, at: x.rec.updatedAt, h: x.h };
+        }
+        done += batch.length;
+      }
+      lafCfg().lastSync = Date.now(); lafCfg().lastError = ""; lafCfg().sent = Object.keys(sent).length;
+      persistOnly();
+      if (manual) toast(done ? `LAF financeiro: ${done} registo${done > 1 ? "s" : ""} enviado${done > 1 ? "s" : ""}` : "LAF financeiro: tudo já estava enviado");
+      if (view === "ajustes") renderView();
+      return { ok: true, done };
+    } finally { lafBusy = false; }
+  }
+  // grava sem voltar a agendar envio
+  function persistOnly() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* */ } }
+  window.__cadernetaLafSync = (m) => lafSync(m);
+
+  // ================= Perfil online: o mesmo perfil em vários celulares =================
+  // Cada celular envia o que mudou (lançamentos, carteiras, metas, fixos e definições) para caderneta.php
+  // no servidor LAF e recebe o que os outros celulares mudaram. As carteiras lidas das SMS são de cada
+  // celular ("M-Pesa · Celular 1"); Dinheiro e Banco são partilhados.
+  const PHONE_WALLETS = ["mpesa", "emola", "mkesh"];
+  const cloudCfg = () => data.cloud;
+  const cloudOn = () => !!(cloudCfg().on && cloudCfg().token);
+  const serverBase = (u) => "https://" + String(u || "").trim().replace(/^https?:\/\//i, "").replace(/\/[^/]*\.php$/i, "").replace(/\/+$/, "");
+  const cloudUrl = () => serverBase(cloudCfg().url) + "/caderneta.php";
+  const devName = () => cloudCfg().devName || "Este celular";
+  function cloudHash(o) {
+    const str = JSON.stringify(o === undefined ? null : o);
+    let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619) >>> 0;
+    return h.toString(36) + "." + str.length.toString(36);
+  }
+  // tudo o que se partilha entre os celulares, por chave "tipo:id"
+  function cloudItems() {
+    const m = new Map();
+    const put = (k, id, o) => m.set(k + ":" + id, { k, id, o });
+    for (const e of data.entries) put("e", e.id, e);
+    for (const w of wallets()) put("w", w.id, w);
+    for (const g of data.goals) put("g", g.id, g);
+    for (const f of data.fixed) put("f", f.id, f);
+    put("d", "cats", data.cats);
+    put("d", "lafCats", data.lafCats);
+    put("d", "prefs", { saveGoal: data.settings.saveGoal || 0, mode: data.settings.mode, smsRules: data.smsRules });
+    put("d", "profile", { name: data.profile.name || "", photo: data.profile.photo || "" });
+    return m;
+  }
+  const LISTS = { e: () => data.entries, w: () => wallets(), g: () => data.goals, f: () => data.fixed };
+  function cloudGet(k, id) {
+    if (LISTS[k]) return LISTS[k]().find((x) => x.id === id);
+    const it = cloudItems().get(k + ":" + id); return it ? it.o : undefined;
+  }
+  // aplica um registo vindo de outro celular; devolve true se mudou alguma coisa
+  function cloudApply(it, first) {
+    const key = it.k + ":" + it.id, sent = cloudCfg().sent;
+    const cur = cloudGet(it.k, it.id);
+    // alteração local ainda não enviada: fica a local (vai na próxima vez), exceto ao entrar no perfil
+    if (cur !== undefined && sent[key] !== undefined && cloudHash(cur) !== sent[key]) return false;
+    if (cur !== undefined && sent[key] === undefined && !first && it.k !== "d") return false;
+    if (LISTS[it.k]) {
+      const list = LISTS[it.k]();
+      const i = list.findIndex((x) => x.id === it.id);
+      if (it.del) { if (i >= 0) list.splice(i, 1); delete sent[key]; return i >= 0; }
+      if (!it.data || typeof it.data !== "object") return false;
+      if (i >= 0) list[i] = it.data; else list.push(it.data);
+      sent[key] = cloudHash(it.data);
+      return true;
+    }
+    if (it.del || !it.data) return false;
+    const d = it.data;
+    if (it.id === "cats" && d.out && d.in) {
+      for (const t of ["out", "in"]) {
+        const extra = first ? (data.cats[t] || []).filter((c) => !d[t].some((x) => x.id === c.id)) : [];
+        data.cats[t] = d[t].concat(extra);
+      }
+      sent[key] = cloudHash(d);
+    } else if (it.id === "lafCats" && d.out && d.in) { data.lafCats = d; sent[key] = cloudHash(d); }
+    else if (it.id === "prefs") {
+      data.settings.saveGoal = d.saveGoal || 0;
+      if (d.mode) data.settings.mode = d.mode;
+      data.smsRules = first ? Object.assign({}, data.smsRules, d.smsRules || {}) : (d.smsRules || {});
+      sent[key] = cloudHash(d);
+    } else if (it.id === "profile") {
+      if (d.name || !first) data.profile.name = d.name || "";
+      if (d.photo || !first) data.profile.photo = d.photo || "";
+      sent[key] = cloudHash(d);
+    } else return false;
+    return true;
+  }
+  // carteira de SMS deste celular (M-Pesa · Celular 1); sem perfil online fica a carteira normal
+  function smsWallet(base) {
+    if (!cloudOn() || !PHONE_WALLETS.includes(base)) return base;
+    const id = `${base}@${cloudCfg().dev}`;
+    if (!wallets().some((w) => w.id === id)) {
+      const b = DEFAULT_WALLETS.find((x) => x[0] === base);
+      wallets().push({ id, name: `${b ? b[1] : base} · ${devName()}`, icon: "phone", show: true, adj: 0, dev: cloudCfg().dev });
+    }
+    return id;
+  }
+  // ao entrar no perfil: as carteiras de telemóvel deste celular passam a ser só dele
+  function cloudAdoptWallets() {
+    const dev = cloudCfg().dev;
+    for (const base of PHONE_WALLETS) {
+      const w = wallets().find((x) => x.id === base);
+      if (!w) continue;
+      const used = data.entries.some((e) => e.w === base || e.w2 === base) || data.fixed.some((f) => f.w === base) || (w.adj || 0) !== 0 || w.syncedAt;
+      data.settings.wallets = wallets().filter((x) => x !== w);
+      if (!used) continue;
+      const id = `${base}@${dev}`;
+      wallets().push({ ...w, id, name: `${w.name} · ${devName()}`, dev });
+      for (const e of data.entries) { if (e.w === base) e.w = id; if (e.w2 === base) e.w2 = id; }
+      for (const f of data.fixed) if (f.w === base) f.w = id;
+    }
+  }
+  function cloudChanges() {
+    const sent = cloudCfg().sent, now = Date.now(), out = [], items = cloudItems();
+    for (const [key, x] of items) {
+      const h = cloudHash(x.o);
+      if (sent[key] !== h) out.push({ key, h, item: { k: x.k, id: x.id, u: now, data: x.o } });
+    }
+    for (const key of Object.keys(sent)) if (!items.has(key)) {
+      const i = key.indexOf(":"); out.push({ key, del: true, item: { k: key.slice(0, i), id: key.slice(i + 1), u: now, del: true } });
+    }
+    return out;
+  }
+  let cloudBusy = false, cloudTimer = null, cloudAgain = false;
+  function cloudSchedule(ms = 2000) { if (!cloudOn()) return; clearTimeout(cloudTimer); cloudTimer = setTimeout(() => cloudSync(), ms); }
+  async function cloudSync(manual = false) {
+    if (!cloudOn()) return null;
+    if (cloudBusy) { cloudAgain = true; return null; }
+    cloudBusy = true;
+    const c = cloudCfg();
+    let result;
+    try {
+      const first = !c.cursor;
+      const changes = first ? [] : cloudChanges();
+      const batches = []; for (let i = 0; i < changes.length; i += 400) batches.push(changes.slice(i, i + 400));
+      let since = c.cursor || 0, changed = 0;
+      for (let i = 0; ; i++) {
+        const batch = batches[i] || [];
+        const r = await postJson(cloudUrl(), { action: "sync", token: c.token, since, items: batch.map((x) => x.item) });
+        if (!(r.json && r.json.ok)) {
+          c.lastError = r.json && r.json.error ? r.json.error : lafErrorText(r);
+          if (r.json && r.json.relogin) { c.on = false; c.token = ""; }
+          persistOnly(); if (manual) toast("Perfil online: " + c.lastError);
+          const st = $("cloudStatus"); if (st) { st.className = "err"; st.textContent = c.lastError; }
+          if (r.json && r.json.relogin && view === "ajustes") renderView();
+          return { ok: false, error: c.lastError };
+        }
+        for (const x of batch) { if (x.del) delete c.sent[x.key]; else c.sent[x.key] = x.h; }
+        for (const it of r.json.items || []) if (cloudApply(it, first)) changed++;
+        since = r.json.cursor; c.devices = r.json.devices || c.devices;
+        if (i >= batches.length - 1 && !r.json.more) break;
+      }
+      c.cursor = since; c.lastSync = Date.now(); c.lastError = "";
+      persistOnly();
+      if (changed && view !== "ajustes") renderView();
+      if (changed) lafSchedule();
+      const st = $("cloudStatus"); if (st) { st.className = "muted"; st.textContent = `Sincronizado agora · ${data.entries.length} lançamentos`; }
+      if (first) cloudAgain = true; // agora envia o que este celular já tinha
+      result = { ok: true, received: changed, sent: changes.length };
+      if (manual && !first) toast(changed || changes.length ? `Sincronizado: ${changes.length} enviado${changes.length === 1 ? "" : "s"}, ${changed} recebido${changed === 1 ? "" : "s"}` : "Tudo sincronizado");
+    } finally {
+      cloudBusy = false;
+      if (cloudAgain) { cloudAgain = false; setTimeout(() => cloudSync(manual), 50); }
+    }
+    return result;
+  }
+  async function cloudEnter(action, email, password, name, url) {
+    const c = cloudCfg();
+    c.url = url || c.url; c.devName = name;
+    const r = await postJson(cloudUrl(), { action, email, password, dev: c.dev, device: name });
+    if (!(r.json && r.json.ok)) return r.json && r.json.error ? r.json.error : lafErrorText(r);
+    Object.assign(c, { on: true, token: r.json.token, email: r.json.email, cursor: 0, sent: {}, lastError: "" });
+    cloudAdoptWallets();
+    if (!data.profile.email) data.profile.email = r.json.email;
+    persistOnly();
+    await cloudSync();
+    return "";
+  }
+  async function cloudLeave() {
+    const c = cloudCfg();
+    if (c.token) postJson(cloudUrl(), { action: "logout", token: c.token });
+    Object.assign(c, { on: false, token: "", cursor: 0, sent: {}, devices: [], lastError: "" });
+    save(); renderView(); toast("Este celular saiu do perfil online. Os dados continuam aqui.");
+  }
+  async function cloudRename(name) {
+    const c = cloudCfg(), old = devName();
+    c.devName = name;
+    for (const w of wallets()) if (w.dev === c.dev && w.name.endsWith(" · " + old)) w.name = w.name.slice(0, -old.length) + name;
+    save();
+    const r = await postJson(cloudUrl(), { action: "rename", token: c.token, device: name });
+    if (r.json && r.json.ok) c.devices = r.json.devices;
+    persistOnly(); renderView(); toast("Nome do celular guardado");
+  }
+  window.__cadernetaCloudSync = (m) => cloudSync(m);
+
   // ================= Layouts (Aparência) =================
   const THEMES = {
     marinho: { name: "Marinho", desc: "Cabeçalho escuro em onda, botão Lançar redondo ao centro", sw: ["#0d1033", "#e9eff9", "#ffffff"], darkIcons: false, bar: "#0d1033" },
-    financas: { name: "Finanças", desc: "Claro, cartões em azul e ícones coloridos, botão + verde", sw: ["#2f54d6", "#34c38f", "#f3f5fa"], darkIcons: true, bar: "#ffffff" },
-    classico: { name: "Clássico", desc: "Cabeçalho índigo, quadrados brancos, barra flutuante", sw: ["#262e6e", "#29a8e0", "#f6f7fb"], darkIcons: false, bar: "#f6f7fb" }
+    financas: { name: "Finanças", desc: "Claro, cartões em azul e ícones coloridos, botão + verde", sw: ["#2f54d6", "#34c38f", "#f3f5fa"], darkIcons: true, navDark: true, bar: "#ffffff" },
+    classico: { name: "Clássico", desc: "Cabeçalho índigo, quadrados brancos, barra flutuante", sw: ["#262e6e", "#29a8e0", "#f6f7fb"], darkIcons: false, navDark: true, bar: "#f6f7fb" },
+    amarelo: { name: "Amarelo-noite", desc: "Fundo quase preto com destaques amarelos", sw: ["#151518", "#f7c325", "#2c2c31"], darkIcons: false, bar: "#1d1d21" },
+    projetos: { name: "Projetos", desc: "Branco e marinho, cartões azul-claro, + ao centro", sw: ["#12336b", "#eef3fc", "#ffffff"], darkIcons: true, bar: "#ffffff" },
+    oceano: { name: "Oceano", desc: "Cabeçalho em degradê azul-verde, botões em pílula", sw: ["#1e6ff1", "#3fd18a", "#eef6ff"], darkIcons: false, navDark: true, bar: "#ffffff" },
+    solidario: { name: "Solidário", desc: "Azul-royal com ciano e blocos com curvas", sw: ["#2b44b5", "#2ec6e8", "#ffffff"], darkIcons: false, bar: "#2b44b5" },
+    limpo: { name: "Limpo", desc: "Cinza-claro, ícones em círculos, banner azul", sw: ["#1453c4", "#f3f5f8", "#ffffff"], darkIcons: true, bar: "#ffffff" },
+    noite: { name: "Noite", desc: "Azul-noite com céu azul e cartão de vidro", sw: ["#070b1a", "#2f6bff", "#a8c3ff"], darkIcons: false, bar: "#090d20" },
+    escuro: { name: "Escuro", desc: "Modo escuro: cinzentos neutros e texto claro, descansa a vista", sw: ["#121212", "#8ab4f8", "#2a2a2a"], darkIcons: false, bar: "#1a1a1a" },
+    ardosia: { name: "Ardósia", desc: "Azul-ardósia, cartões translúcidos, botão amarelo", sw: ["#24405f", "#f2b84b", "#e8e4ff"], darkIcons: false, bar: "#1b3350" }
   };
   function applyTheme() {
     const t = THEMES[data.settings.theme] ? data.settings.theme : "marinho";
     document.documentElement.dataset.tema = t;
     const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = THEMES[t].sw[0];
-    if (android && android.barras) { try { android.barras(THEMES[t].darkIcons, THEMES[t].bar); } catch (e) { /* ignorar */ } }
+    if (android && android.barras2) { try { android.barras2(THEMES[t].darkIcons, !!(THEMES[t].navDark ?? THEMES[t].darkIcons), THEMES[t].bar); } catch (e) { /* ignorar */ } }
+    else if (android && android.barras) { try { android.barras(THEMES[t].darkIcons, THEMES[t].bar); } catch (e) { /* ignorar */ } }
   }
   function setTheme(t) { data.settings.theme = t; save(); applyTheme(); renderView(); toast(`Layout ${THEMES[t].name} aplicado`); }
 
@@ -689,7 +1064,7 @@
   }
 
   // ================= Lançar =================
-  const launch = { type: "out", expr: "", w: "dinheiro" };
+  const launch = { type: "out", expr: "", w: "dinheiro", group: "OPERATING" };
   function termsOf(expr) { return expr.split("+").filter((s) => s !== ""); }
   function termCents(t) { const v = parseMoney(t.endsWith(",") ? t.slice(0, -1) : t); return v || 0; }
   function exprTotal() { return termsOf(launch.expr).reduce((a, t) => a + termCents(t), 0); }
@@ -751,7 +1126,16 @@
       el("span", { class: "link", text: "Ver" })));
 
     const grid = $("catGrid"); grid.replaceChildren();
-    const cats = catList(launch.type);
+    let cats = catList(launch.type);
+    const gc = $("groupChips"); gc.replaceChildren();
+    $("catTitle").textContent = empresa() ? (launch.type === "out" ? "Tipos de despesa (LAF)" : "Tipos de receita (LAF)") : "Categorias";
+    gc.hidden = !(empresa() && launch.type === "out");
+    if (!gc.hidden) {
+      const groups = Object.keys(LAF_GROUPS).filter((g) => cats.some((c) => c.group === g));
+      if (!groups.includes(launch.group)) launch.group = groups[0];
+      for (const g of groups) gc.append(el("button", { type: "button", class: "chip", "aria-pressed": String(launch.group === g), onclick: () => { launch.group = g; renderLaunch(); } }, LAF_GROUPS[g].name));
+      cats = cats.filter((c) => c.group === launch.group);
+    }
     grid.classList.toggle("few", cats.length <= 6);
     for (const c of cats) grid.append(el("button", { type: "button", class: "action", style: colorVars(c.color), onclick: () => commit(c) }, svg(c.icon), el("span", { text: c.name })));
 
@@ -829,8 +1213,8 @@
   }
   function editFixed(f) {
     const isNew = !f;
-    f = f || { t: "out", name: "", v: 0, cat: "casa", w: "dinheiro", day: 1 };
-    const catOpts = (t) => catList(t).map((c) => [c.id, c.name]);
+    f = f || { t: "out", name: "", v: 0, cat: empresa() ? defaultCat("out") : "casa", w: "dinheiro", day: 1 };
+    const catOpts = (t) => { const l = catList(t).map((c) => [c.id, catLabel(c)]); if (t === f.t && !l.some(([id]) => id === f.cat)) l.unshift([f.cat, catLabel(catById(t, f.cat))]); return l; };
     openForm({
       title: isNew ? "Novo pagamento fixo" : "Pagamento fixo",
       intro: "Todos os meses, a partir do dia indicado, a Caderneta pede-lhe para confirmar este valor.",
@@ -1293,7 +1677,7 @@
     };
     const addRow = (catId, val) => {
       const sel = el("select", { "aria-label": "Categoria" });
-      for (const c of cats) sel.append(el("option", { value: c.id, text: c.name }));
+      for (const c of cats) sel.append(el("option", { value: c.id, text: catLabel(c) }));
       if (catId && cats.some((c) => c.id === catId)) sel.value = catId;
       const inp = el("input", { inputmode: "decimal", autocomplete: "off", placeholder: "0", "aria-label": "Valor (MT)" });
       if (val) inp.value = fmtPlain(val);
@@ -1304,7 +1688,7 @@
       rows.append(row);
       return inp;
     };
-    addRow("transp"); addRow("alim");
+    if (empresa()) addRow(); else { addRow("transp"); addRow("alim"); }
     const actions = el("div", { class: "split-actions" },
       el("button", { type: "button", class: "btn small", text: "+ Outra categoria", onclick: () => { addRow(cats[0] && cats[0].id).focus(); update(); } }),
       el("button", { type: "button", class: "btn small", text: "Pôr o resto na última", onclick: () => {
@@ -1351,8 +1735,8 @@
       });
       return;
     }
-    const cats = catList(e.t).map((c) => [c.id, c.name]);
-    if (!cats.some(([id]) => id === e.cat)) cats.push([e.cat, "Sem categoria"]);
+    const cats = catList(e.t).map((c) => [c.id, catLabel(c)]);
+    if (!cats.some(([id]) => id === e.cat)) cats.unshift([e.cat, catLabel(catById(e.t, e.cat))]);
     openForm({
       title: e.t === "out" ? "Editar gasto" : "Editar entrada",
       extra: e.t === "out" && e.v > 1 ? { label: "Dividir", onClick: () => openSplit(e) } : null,
@@ -1398,6 +1782,20 @@
     if (view === "ajustes" || view === "resumo") renderView();
   };
 
+  // ================= Modo de uso =================
+  function setMode(m) {
+    if (data.settings.mode === m) return;
+    data.settings.mode = m;
+    data.settings.laf.on = m === "empresa";
+    launch.group = "OPERATING";
+    openSec.modo = true;
+    save(); renderView();
+    if (m === "empresa") {
+      toast(lafCfg().key ? "Modo empresarial: lançamentos nos tipos do LAF são enviados" : "Modo empresarial: ligue ao LAF com a chave de acesso");
+      if (lafReady()) lafSync();
+    } else toast("Modo individual: nada é enviado para fora do telemóvel");
+  }
+
   // ================= Ajustes =================
   let installEvt = null;
   window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; if (view === "ajustes") renderAjustes(); });
@@ -1424,6 +1822,94 @@
       el("div", { class: "row2" }, el("label", { class: "field" }, el("span", { text: "Telemóvel (opcional)" }), phoneIn), el("label", { class: "field" }, el("span", { text: "E-mail (opcional)" }), mailIn)),
       el("button", { type: "button", class: "btn primary", text: "Guardar perfil", onclick: saveProfile })
     ], !pr.name));
+
+    // Perfil online: o mesmo perfil em vários celulares
+    const cc = data.cloud;
+    const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 2 ? "agora" : m < 60 ? `há ${m} min` : m < 1440 ? `há ${Math.round(m / 60)} h` : new Date(t).toLocaleDateString("pt-PT"); };
+    const cloudParts = [];
+    const cStatus = el("p", { class: cc.lastError ? "err" : "muted", id: "cloudStatus", text: cc.lastError || "" });
+    if (!cloudOn()) {
+      const devIn = el("input", { id: "cloudDev", value: cc.devName || "", maxlength: 30, placeholder: "Ex.: Celular 1 (M-Pesa)" });
+      const urlIn = el("input", { id: "cloudUrl", value: cc.url || "", placeholder: "cotacoes.lafwoodworking.com", autocomplete: "off", inputmode: "url" });
+      const mailIn = el("input", { id: "cloudMail", type: "email", value: cc.email || data.profile.email || "", maxlength: 120, placeholder: "nome@exemplo.com", autocomplete: "email" });
+      const passIn = el("input", { id: "cloudPass", type: "password", maxlength: 100, placeholder: "Pelo menos 6 caracteres", autocomplete: "current-password" });
+      const go = async (action) => {
+        const name = devIn.value.trim(), email = mailIn.value.trim(), pass = passIn.value;
+        if (!name) { cStatus.className = "err"; cStatus.textContent = "Dê um nome a este celular, por exemplo Celular 1."; return; }
+        if (!/^\S+@\S+\.\S+$/.test(email)) { cStatus.className = "err"; cStatus.textContent = "Escreva o seu e-mail."; return; }
+        if (pass.length < 6) { cStatus.className = "err"; cStatus.textContent = "A palavra-passe precisa de pelo menos 6 caracteres."; return; }
+        cStatus.className = "muted"; cStatus.textContent = action === "register" ? "A criar o perfil…" : "A entrar…";
+        const err = await cloudEnter(action, email, pass, name, urlIn.value.trim());
+        if (err) { cStatus.className = "err"; cStatus.textContent = err; return; }
+        openSec.nuvem = true; renderView();
+        toast(action === "register" ? "Perfil criado. Entre com o mesmo e-mail nos outros celulares." : "Celular ligado ao perfil. Os dados estão a ser juntados.");
+      };
+      cloudParts.push(
+        el("p", { class: "muted", text: "Use o mesmo perfil nos celulares que tem (ex.: um com M-Pesa, outro com e-Mola) e veja os gastos de todos juntos. Cada celular lê as suas SMS e as carteiras ficam com o nome do celular. Os dados ficam no seu servidor LAF, separados das Finanças da empresa." }),
+        el("label", { class: "field" }, el("span", { text: "Nome deste celular" }), devIn),
+        el("label", { class: "field" }, el("span", { text: "E-mail" }), mailIn),
+        el("label", { class: "field" }, el("span", { text: "Palavra-passe do perfil" }), passIn),
+        el("details", { class: "mini" }, el("summary", { text: "Servidor" }), el("label", { class: "field" }, el("span", { text: "Endereço do servidor" }), urlIn)),
+        el("div", { class: "btnrow" },
+          el("button", { type: "button", class: "btn primary", id: "cloudRegister", text: "Criar perfil", onclick: () => go("register") }),
+          el("button", { type: "button", class: "btn", id: "cloudLogin", text: "Entrar", onclick: () => go("login") })),
+        el("p", { class: "muted", text: "Primeiro celular: Criar perfil. Nos outros: Entrar com o mesmo e-mail e palavra-passe." }),
+        cStatus);
+    } else {
+      const renIn = el("input", { id: "cloudRename", value: cc.devName || "", maxlength: 30, "aria-label": "Nome deste celular" });
+      const devs = (cc.devices || []).map((d) => el("div", { class: "dev-row" },
+        el("span", { class: "icon-pick" }, svg("phone")),
+        el("span", { class: "dev-name" }, el("b", { text: d.name + (d.dev === cc.dev ? " (este)" : "") }), el("span", { class: "muted", text: d.dev === cc.dev ? "aberto agora" : "última ligação " + ago(d.seen) }))));
+      if (!cc.lastError) cStatus.textContent = cc.lastSync ? `Sincronizado ${ago(cc.lastSync)} · ${data.entries.length} lançamentos` : "A sincronizar…";
+      cloudParts.push(
+        el("p", { class: "muted" }, "Perfil ", el("b", { text: cc.email }), `. Os lançamentos de todos os celulares aparecem em Resumo, Histórico e Carteira.`),
+        el("h3", { class: "panel-title", text: `Celulares neste perfil (${(cc.devices || []).length})` }),
+        el("div", { class: "stack", id: "cloudDevices" }, ...devs),
+        el("div", { class: "setrow" }, renIn, el("button", { type: "button", class: "btn small", text: "Mudar nome", onclick: () => { const v = renIn.value.trim(); if (v && v !== cc.devName) cloudRename(v); } })),
+        cStatus,
+        el("div", { class: "btnrow" },
+          el("button", { type: "button", class: "btn small primary", id: "cloudSyncNow", text: "Sincronizar agora", onclick: async () => { cStatus.className = "muted"; cStatus.textContent = "A sincronizar…"; await cloudSync(true); } }),
+          el("button", { type: "button", class: "btn small danger-outline", text: "Sair neste celular", onclick: cloudLeave })));
+    }
+    body.append(fold("nuvem", "Vários celulares", cloudOn() ? `${(cc.devices || []).length || 1} celular${(cc.devices || []).length > 1 ? "es" : ""} · ${devName()}` : "desligado", cloudParts));
+
+    // Modo de uso: individual (nada sai do telemóvel) ou empresarial (tipos do LAF e envio para o LAF financeiro)
+    const lc = data.settings.laf;
+    const modeParts = [el("div", { class: "theme-list" }, ...[
+      ["individual", "Individual", "Para as suas contas. Categorias pessoais e nada é enviado para fora do telemóvel."],
+      ["empresa", "Empresarial (LAF)", "Usa os tipos de despesa e receita do LAF financeiro e envia os lançamentos para as Finanças do LAF."]
+    ].map(([id, name, desc]) => el("button", { type: "button", class: "theme-opt mode-opt", "data-mode": id, "aria-pressed": String(data.settings.mode === id), onclick: () => setMode(id) },
+      el("span", { class: "icon-pick" }, svg(id === "empresa" ? "negocio" : "user")),
+      el("span", { class: "theme-txt" }, el("b", { text: name }), el("span", { text: desc })),
+      el("span", { class: "theme-check", text: data.settings.mode === id ? "✓" : "" }))))];
+    if (empresa()) {
+      if (android && android.lafPedido) {
+        const urlIn = el("input", { id: "lafUrl", value: lc.url || "", placeholder: "cotacoes.lafwoodworking.com", autocomplete: "off", inputmode: "url" });
+        const keyIn = el("input", { id: "lafKey", type: "password", value: lc.key || "", placeholder: "A chave de acesso (API_KEY)", autocomplete: "off" });
+        const status = el("p", { class: "muted", id: "lafStatus" });
+        const showStatus = () => {
+          status.textContent = !lc.key ? "Escreva a chave de acesso e toque em Ligar ao LAF." : lc.lastError ? `Último erro: ${lc.lastError}` : lc.lastSync ? `Última sincronização: ${dayName(isoOf(new Date(lc.lastSync)))} ${timeOf(lc.lastSync)} · ${lc.sent || 0} lançamentos no LAF` : "Ainda não sincronizado.";
+          status.className = lc.lastError ? "err" : "muted";
+        };
+        showStatus();
+        const saveCfg = () => { lc.url = urlIn.value.trim(); lc.key = keyIn.value.trim(); persistOnly(); };
+        modeParts.push(
+          el("p", { class: "muted", text: "Os gastos e entradas lançados nos tipos do LAF vão para as Finanças do LAF (separador Caderneta). Edições e apagados também. Transferências, metas e movimentos das SMS por categorizar não são enviados." }),
+          el("label", { class: "field" }, el("span", { text: "Endereço do servidor" }), urlIn),
+          el("label", { class: "field" }, el("span", { text: "Chave de acesso (a mesma do app LAF)" }), keyIn),
+          el("div", { class: "btnrow" },
+            el("button", { type: "button", class: "btn small primary", id: "lafConnect", text: lc.lastSync ? "Testar ligação" : "Ligar ao LAF", onclick: async () => {
+              saveCfg(); if (!lc.key) { showStatus(); return; }
+              status.textContent = "A ligar…"; status.className = "muted";
+              const r = await lafTest();
+              if (!r.ok) { lc.lastError = r.error; persistOnly(); status.textContent = r.error; status.className = "err"; return; }
+              lc.lastError = ""; toast("Ligação ao LAF a funcionar. Tipos atualizados."); await lafSync(true); renderView();
+            } }),
+            lc.key ? el("button", { type: "button", class: "btn small", text: "Enviar agora", onclick: async () => { saveCfg(); status.textContent = "A enviar…"; await lafSync(true); showStatus(); } }) : null),
+          status);
+      } else modeParts.push(el("p", { class: "muted", text: "Os tipos do LAF já aparecem em Lançar. O envio para o LAF funciona no app instalado (APK) para Android." }));
+    }
+    body.append(fold("modo", "Modo de uso", empresa() ? (lc.lastError ? "Empresarial · erro" : lc.lastSync ? "Empresarial · ligado" : "Empresarial") : "Individual", modeParts, empresa() && !lc.lastSync));
 
     // Aparência: escolher um dos três layouts
     const curT = THEMES[data.settings.theme] ? data.settings.theme : "marinho";
@@ -1508,7 +1994,7 @@
       wPanel.append(el("div", { class: "setrow switch" }, el("span", { class: "icon-pick" }, svg(w.icon)), name, sw));
     }
     body.append(fold("carteiras", "Carteiras", usedWallets().map((w) => w.name).join(", "), wParts));
-    body.append(fold("categorias", "Categorias e limites", `${catList("out").length + catList("in").length} categorias`, [catEditor("out"), catEditor("in")]));
+    body.append(fold("categorias", empresa() ? "Tipos e limites" : "Categorias e limites", `${catList("out").length + catList("in").length} ${empresa() ? "tipos do LAF" : "categorias"}`, [catEditor("out"), catEditor("in")]));
 
     // Cópia
     const last = data.settings.lastBackup;
@@ -1526,13 +2012,15 @@
   }
 
   function catEditor(t) {
-    const panel = el("div", { class: "stack" }, el("h3", { class: "panel-title", text: t === "out" ? "Gastos" : "Entradas" }),
-      el("p", { class: "muted", text: t === "out" ? "Toque no ícone para o trocar. Defina um limite por mês para receber um aviso aos 80% e ao passar." : "Toque no ícone para o trocar." }));
+    const lafMode = empresa();
+    const panel = el("div", { class: "stack" }, el("h3", { class: "panel-title", text: t === "out" ? (lafMode ? "Tipos de despesa" : "Gastos") : (lafMode ? "Tipos de receita" : "Entradas") }),
+      el("p", { class: "muted", text: (lafMode ? "Os nomes vêm do LAF financeiro (mude-os lá, em Definições). " : "") + (t === "out" ? "Toque no ícone para o trocar. Defina um limite por mês para receber um aviso aos 80% e ao passar." : "Toque no ícone para o trocar.") }));
     const used = new Set(data.entries.filter((e) => e.t === t).map((e) => e.cat));
     for (const c of catList(t)) {
       const icon = el("button", { type: "button", class: "icon-pick", "aria-label": "Trocar ícone de " + c.name }, svg(c.icon));
       icon.onclick = () => { const i = CAT_ICON_CHOICES.indexOf(c.icon); c.icon = CAT_ICON_CHOICES[(i + 1) % CAT_ICON_CHOICES.length]; save(); icon.replaceChildren(svg(c.icon)); };
-      const name = el("input", { value: c.name, maxlength: 24, "aria-label": "Nome da categoria" });
+      const name = el("input", { value: lafMode ? catLabel(c) : c.name, maxlength: 24, "aria-label": "Nome da categoria" });
+      if (lafMode) name.readOnly = true;
       name.addEventListener("change", () => { const v = name.value.trim(); if (v) { c.name = v; save(); toast("Categoria renomeada"); } else name.value = c.name; });
       const color = el("input", { type: "color", value: c.color, "aria-label": "Cor de " + c.name });
       color.addEventListener("change", () => { c.color = color.value; save(); });
@@ -1543,7 +2031,7 @@
         if (!armed) { armed = true; del.textContent = used.has(c.id) ? "Remover? Lançamentos ficam sem categoria" : "Remover?"; del.className = "btn small danger"; return; }
         data.cats[t] = catList(t).filter((x) => x.id !== c.id); save(); renderAjustes();
       };
-      panel.append(el("div", { class: "setrow" }, icon, name, color, del));
+      panel.append(el("div", { class: "setrow" }, icon, name, color, lafMode ? null : del));
       if (t === "out") {
         const lim = el("input", { inputmode: "decimal", autocomplete: "off", placeholder: "sem limite", value: c.limit ? fmtPlain(c.limit) : "", "aria-label": "Limite mensal de " + c.name });
         lim.addEventListener("change", () => {
@@ -1554,7 +2042,7 @@
         panel.append(el("div", { class: "setrow-sub" }, el("span", { text: "Limite/mês" }), lim));
       }
     }
-    panel.append(el("button", { type: "button", class: "btn", text: "+ Nova categoria", onclick: () => {
+    if (!lafMode) panel.append(el("button", { type: "button", class: "btn", text: "+ Nova categoria", onclick: () => {
       const palette = ["#ff9f5a", "#4fd1a1", "#a58bff", "#5b9dff", "#ffd25a", "#4cc9f0", "#ff6b8b", "#f6a6ff", "#7ee0ff"];
       catList(t).push({ id: uid(), name: "Nova categoria", color: palette[catList(t).length % palette.length], icon: "tag" }); save(); renderAjustes();
       const input = [...document.querySelectorAll("#ajustesBody input:not([type])")].find((i) => i.value === "Nova categoria");
@@ -1607,7 +2095,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.7.0";
+  const APP_VERSION = "2.2.1";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if (!$("lock").hidden) return false;
@@ -1634,10 +2122,15 @@
     data.profile.asked = true; save();
     openForm({
       title: "Bem-vindo à Caderneta",
-      intro: "Como se chama? O nome aparece na saudação. Em Ajustes pode pôr foto e criar um código de acesso.",
-      fields: [{ id: "name", label: "Nome", type: "text", placeholder: "O seu nome", maxlength: 40 }],
+      intro: "Como se chama? O nome aparece na saudação. Em Ajustes pode pôr foto, criar um código de acesso e mudar o modo de uso.",
+      fields: [{ id: "name", label: "Nome", type: "text", placeholder: "O seu nome", maxlength: 40 },
+        { id: "mode", label: "Como vai usar a Caderneta", type: "select", value: data.settings.mode, options: [["individual", "Individual (só para mim, nada é enviado)"], ["empresa", "Empresarial (enviar para o LAF financeiro)"]] }],
       submit: "Começar",
-      onSubmit: (v) => { data.profile.name = v.name.trim(); save(); renderView(); }
+      onSubmit: (v) => {
+        data.profile.name = v.name.trim(); save();
+        if (v.mode && v.mode !== data.settings.mode) { setMode(v.mode); if (v.mode === "empresa") location.hash = "#ajustes"; }
+        renderView();
+      }
     });
   }
   document.addEventListener("visibilitychange", () => {
@@ -1645,6 +2138,12 @@
     if (pinRec() && unlocked && hiddenAt && Date.now() - hiddenAt > LOCK_AFTER) showLock();
   });
   pullSms();
+  setTimeout(() => lafSync(), 4000);
+  setTimeout(() => cloudSync(), 1500);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) cloudSchedule(300); });
+  // com a Caderneta aberta, vai buscar os gastos dos outros celulares a cada 45 s
+  setInterval(() => { if (!document.hidden && cloudOn()) cloudSync(); }, 45000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) lafSchedule(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) pullSms(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden && today() !== lastDay) { lastDay = today(); viewMonth = monthOf(lastDay); $("date").value = lastDay; renderView(); } });
 
