@@ -475,10 +475,17 @@
     const c = empresa() && KNOWN_LAF[rule] && catList(t).find((x) => x.name === KNOWN_LAF[rule]);
     return c ? c.id : null;
   }
+  // quando o movimento aconteceu: a hora em que foi anotado, mas nunca depois do fim do dia escolhido
+  // (um gasto de ontem anotado hoje aconteceu antes da SMS de saldo de hoje)
+  function entryTime(e) {
+    const [y, m, dd] = String(e.d || "").split("-").map(Number);
+    const end = y ? new Date(y, m - 1, dd, 23, 59, 59, 999).getTime() : Infinity;
+    return Math.min(e.ts || end, end);
+  }
   function balanceAt(id, ts) {
     let b = walletById(id).adj || 0;
     for (const e of data.entries) {
-      if ((e.ts || 0) > ts) continue;
+      if (entryTime(e) > ts) continue;
       if (e.t === "in" && e.w === id) b += e.v;
       else if (e.t === "out" && e.w === id) b -= e.v;
       else if (e.t === "tr") { if (e.w === id) b -= e.v; if (e.w2 === id) b += e.v; }
@@ -2088,7 +2095,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "2.2.0";
+  const APP_VERSION = "2.2.1";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if (!$("lock").hidden) return false;
