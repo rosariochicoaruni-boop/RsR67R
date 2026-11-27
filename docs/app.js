@@ -129,6 +129,8 @@
     if (!s.mode) s.mode = s.laf.on ? "empresa" : "individual";
     if (!d.lafCats) buildLafCats(d, null);
     if (!d.profile) d.profile = { name: "", phone: "", email: "", photo: "" };
+    if (!d.cloud) d.cloud = { on: false, url: s.laf.url || "cotacoes.lafwoodworking.com", email: "", token: "", dev: "", devName: "", cursor: 0, lastSync: 0, lastError: "", sent: {}, devices: [] };
+    if (!d.cloud.dev) d.cloud.dev = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     // 1.4.0: levantamentos lidos das SMS passam a ficar "por dividir" (uma vez)
     if (!s.splitMigrated) {
       s.splitMigrated = true;
@@ -161,6 +163,7 @@
     if (!persistAsked && navigator.storage && navigator.storage.persist) { persistAsked = true; navigator.storage.persist().catch(() => {}); }
     tellAndroidLastEntry();
     if (typeof lafSchedule === "function") lafSchedule();
+    if (typeof cloudSchedule === "function") cloudSchedule();
   }
 
   // ================= Utilidades =================
@@ -486,11 +489,12 @@
   function applySms(p) {
     const key = p.id || ("h" + Array.from(p.body).reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
     if (data.smsSeen.includes(key)) return -1;
-    const w = walletById(p.wallet);
-    if (!wallets().some((x) => x.id === p.wallet)) return 0;
+    if (!(cloudOn() && PHONE_WALLETS.includes(p.wallet)) && !wallets().some((x) => x.id === p.wallet)) return 0;
+    const wid = smsWallet(p.wallet);
+    const w = walletById(wid);
     w.show = true;
     const rule = p.party ? (data.smsRules[normParty(p.party)] || knownParty(p.party, p.kind)) : null;
-    const base = { d: p.d, ts: p.ts, w: p.wallet, auto: true, sms: key };
+    const base = { d: p.d, ts: p.ts, w: wid, auto: true, sms: key };
     const note = p.party === "Vodacom" && p.content ? `${p.content} (M-Pesa)` : (p.party || p.content || "");
     let n = 0;
     if (p.kind === "credelec") {
@@ -523,10 +527,10 @@
       data.entries.push({ id: uid(), t: "out", v: p.fee, cat: feeCat, note: `Taxa ${WALLET_LABEL[p.wallet] || ""}`.trim(), ...base, ts: p.ts + 1 }); n++;
     }
     if (p.bal != null) {
-      w.adj = (w.adj || 0) + (p.bal - balanceAt(p.wallet, p.ts + 1));
+      w.adj = (w.adj || 0) + (p.bal - balanceAt(wid, p.ts + 1));
       w.syncedAt = p.ts; w.syncedBal = p.bal;
       data.settings.walletsSet = true;
-      syncedNow[p.wallet] = p.bal;
+      syncedNow[wid] = p.bal;
     }
     data.smsSeen.push(key);
     if (data.smsSeen.length > 2000) data.smsSeen = data.smsSeen.slice(-1500);
@@ -650,13 +654,20 @@
   // Pedido ao servidor feito pelo APK (sem limites de CORS); a resposta volta por __lafResposta
   const lafWaiting = {};
   window.__lafResposta = (id, status, text) => { const f = lafWaiting[id]; delete lafWaiting[id]; if (f) f(status, text); };
-  function lafPost(body) {
+  // Pedido JSON: no APK pelo Android (sem limites de CORS); no navegador por fetch
+  function postJson(url, body) {
+    if (!(android && android.lafPedido)) {
+      return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        .then(async (r) => { const text = await r.text(); let j = null; try { j = JSON.parse(text); } catch (e) { /* */ } return { status: r.status, json: j, text }; })
+        .catch(() => ({ status: 0, json: null, text: "" }));
+    }
     return new Promise((resolve) => {
       const id = uid(); lafWaiting[id] = (status, text) => { let j = null; try { j = JSON.parse(text); } catch (e) { /* */ } resolve({ status, json: j, text }); };
-      try { android.lafPedido(lafUrl(), JSON.stringify(body), id); } catch (e) { delete lafWaiting[id]; resolve({ status: 0, json: null, text: String(e) }); }
-      setTimeout(() => { if (lafWaiting[id]) window.__lafResposta(id, 0, ""); }, 30000);
+      try { android.lafPedido(url, JSON.stringify(body), id); } catch (e) { delete lafWaiting[id]; resolve({ status: 0, json: null, text: String(e) }); }
+      setTimeout(() => { if (lafWaiting[id]) window.__lafResposta(id, 0, ""); }, 60000);
     });
   }
+  const lafPost = (body) => postJson(lafUrl(), body);
   const lafErrorText = (r) => r.json && r.json.error ? r.json.error : r.status === 0 ? "Sem ligação ao servidor (verifique a internet e o endereço)." : `O servidor respondeu ${r.status}.`;
 
   async function lafTest() {
@@ -719,6 +730,185 @@
   // grava sem voltar a agendar envio
   function persistOnly() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* */ } }
   window.__cadernetaLafSync = (m) => lafSync(m);
+
+  // ================= Perfil online: o mesmo perfil em vários celulares =================
+  // Cada celular envia o que mudou (lançamentos, carteiras, metas, fixos e definições) para caderneta.php
+  // no servidor LAF e recebe o que os outros celulares mudaram. As carteiras lidas das SMS são de cada
+  // celular ("M-Pesa · Celular 1"); Dinheiro e Banco são partilhados.
+  const PHONE_WALLETS = ["mpesa", "emola", "mkesh"];
+  const cloudCfg = () => data.cloud;
+  const cloudOn = () => !!(cloudCfg().on && cloudCfg().token);
+  const serverBase = (u) => "https://" + String(u || "").trim().replace(/^https?:\/\//i, "").replace(/\/[^/]*\.php$/i, "").replace(/\/+$/, "");
+  const cloudUrl = () => serverBase(cloudCfg().url) + "/caderneta.php";
+  const devName = () => cloudCfg().devName || "Este celular";
+  function cloudHash(o) {
+    const str = JSON.stringify(o === undefined ? null : o);
+    let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619) >>> 0;
+    return h.toString(36) + "." + str.length.toString(36);
+  }
+  // tudo o que se partilha entre os celulares, por chave "tipo:id"
+  function cloudItems() {
+    const m = new Map();
+    const put = (k, id, o) => m.set(k + ":" + id, { k, id, o });
+    for (const e of data.entries) put("e", e.id, e);
+    for (const w of wallets()) put("w", w.id, w);
+    for (const g of data.goals) put("g", g.id, g);
+    for (const f of data.fixed) put("f", f.id, f);
+    put("d", "cats", data.cats);
+    put("d", "lafCats", data.lafCats);
+    put("d", "prefs", { saveGoal: data.settings.saveGoal || 0, mode: data.settings.mode, smsRules: data.smsRules });
+    put("d", "profile", { name: data.profile.name || "", photo: data.profile.photo || "" });
+    return m;
+  }
+  const LISTS = { e: () => data.entries, w: () => wallets(), g: () => data.goals, f: () => data.fixed };
+  function cloudGet(k, id) {
+    if (LISTS[k]) return LISTS[k]().find((x) => x.id === id);
+    const it = cloudItems().get(k + ":" + id); return it ? it.o : undefined;
+  }
+  // aplica um registo vindo de outro celular; devolve true se mudou alguma coisa
+  function cloudApply(it, first) {
+    const key = it.k + ":" + it.id, sent = cloudCfg().sent;
+    const cur = cloudGet(it.k, it.id);
+    // alteração local ainda não enviada: fica a local (vai na próxima vez), exceto ao entrar no perfil
+    if (cur !== undefined && sent[key] !== undefined && cloudHash(cur) !== sent[key]) return false;
+    if (cur !== undefined && sent[key] === undefined && !first && it.k !== "d") return false;
+    if (LISTS[it.k]) {
+      const list = LISTS[it.k]();
+      const i = list.findIndex((x) => x.id === it.id);
+      if (it.del) { if (i >= 0) list.splice(i, 1); delete sent[key]; return i >= 0; }
+      if (!it.data || typeof it.data !== "object") return false;
+      if (i >= 0) list[i] = it.data; else list.push(it.data);
+      sent[key] = cloudHash(it.data);
+      return true;
+    }
+    if (it.del || !it.data) return false;
+    const d = it.data;
+    if (it.id === "cats" && d.out && d.in) {
+      for (const t of ["out", "in"]) {
+        const extra = first ? (data.cats[t] || []).filter((c) => !d[t].some((x) => x.id === c.id)) : [];
+        data.cats[t] = d[t].concat(extra);
+      }
+      sent[key] = cloudHash(d);
+    } else if (it.id === "lafCats" && d.out && d.in) { data.lafCats = d; sent[key] = cloudHash(d); }
+    else if (it.id === "prefs") {
+      data.settings.saveGoal = d.saveGoal || 0;
+      if (d.mode) data.settings.mode = d.mode;
+      data.smsRules = first ? Object.assign({}, data.smsRules, d.smsRules || {}) : (d.smsRules || {});
+      sent[key] = cloudHash(d);
+    } else if (it.id === "profile") {
+      if (d.name || !first) data.profile.name = d.name || "";
+      if (d.photo || !first) data.profile.photo = d.photo || "";
+      sent[key] = cloudHash(d);
+    } else return false;
+    return true;
+  }
+  // carteira de SMS deste celular (M-Pesa · Celular 1); sem perfil online fica a carteira normal
+  function smsWallet(base) {
+    if (!cloudOn() || !PHONE_WALLETS.includes(base)) return base;
+    const id = `${base}@${cloudCfg().dev}`;
+    if (!wallets().some((w) => w.id === id)) {
+      const b = DEFAULT_WALLETS.find((x) => x[0] === base);
+      wallets().push({ id, name: `${b ? b[1] : base} · ${devName()}`, icon: "phone", show: true, adj: 0, dev: cloudCfg().dev });
+    }
+    return id;
+  }
+  // ao entrar no perfil: as carteiras de telemóvel deste celular passam a ser só dele
+  function cloudAdoptWallets() {
+    const dev = cloudCfg().dev;
+    for (const base of PHONE_WALLETS) {
+      const w = wallets().find((x) => x.id === base);
+      if (!w) continue;
+      const used = data.entries.some((e) => e.w === base || e.w2 === base) || data.fixed.some((f) => f.w === base) || (w.adj || 0) !== 0 || w.syncedAt;
+      data.settings.wallets = wallets().filter((x) => x !== w);
+      if (!used) continue;
+      const id = `${base}@${dev}`;
+      wallets().push({ ...w, id, name: `${w.name} · ${devName()}`, dev });
+      for (const e of data.entries) { if (e.w === base) e.w = id; if (e.w2 === base) e.w2 = id; }
+      for (const f of data.fixed) if (f.w === base) f.w = id;
+    }
+  }
+  function cloudChanges() {
+    const sent = cloudCfg().sent, now = Date.now(), out = [], items = cloudItems();
+    for (const [key, x] of items) {
+      const h = cloudHash(x.o);
+      if (sent[key] !== h) out.push({ key, h, item: { k: x.k, id: x.id, u: now, data: x.o } });
+    }
+    for (const key of Object.keys(sent)) if (!items.has(key)) {
+      const i = key.indexOf(":"); out.push({ key, del: true, item: { k: key.slice(0, i), id: key.slice(i + 1), u: now, del: true } });
+    }
+    return out;
+  }
+  let cloudBusy = false, cloudTimer = null, cloudAgain = false;
+  function cloudSchedule(ms = 2000) { if (!cloudOn()) return; clearTimeout(cloudTimer); cloudTimer = setTimeout(() => cloudSync(), ms); }
+  async function cloudSync(manual = false) {
+    if (!cloudOn()) return null;
+    if (cloudBusy) { cloudAgain = true; return null; }
+    cloudBusy = true;
+    const c = cloudCfg();
+    let result;
+    try {
+      const first = !c.cursor;
+      const changes = first ? [] : cloudChanges();
+      const batches = []; for (let i = 0; i < changes.length; i += 400) batches.push(changes.slice(i, i + 400));
+      let since = c.cursor || 0, changed = 0;
+      for (let i = 0; ; i++) {
+        const batch = batches[i] || [];
+        const r = await postJson(cloudUrl(), { action: "sync", token: c.token, since, items: batch.map((x) => x.item) });
+        if (!(r.json && r.json.ok)) {
+          c.lastError = r.json && r.json.error ? r.json.error : lafErrorText(r);
+          if (r.json && r.json.relogin) { c.on = false; c.token = ""; }
+          persistOnly(); if (manual) toast("Perfil online: " + c.lastError);
+          const st = $("cloudStatus"); if (st) { st.className = "err"; st.textContent = c.lastError; }
+          if (r.json && r.json.relogin && view === "ajustes") renderView();
+          return { ok: false, error: c.lastError };
+        }
+        for (const x of batch) { if (x.del) delete c.sent[x.key]; else c.sent[x.key] = x.h; }
+        for (const it of r.json.items || []) if (cloudApply(it, first)) changed++;
+        since = r.json.cursor; c.devices = r.json.devices || c.devices;
+        if (i >= batches.length - 1 && !r.json.more) break;
+      }
+      c.cursor = since; c.lastSync = Date.now(); c.lastError = "";
+      persistOnly();
+      if (changed && view !== "ajustes") renderView();
+      if (changed) lafSchedule();
+      const st = $("cloudStatus"); if (st) { st.className = "muted"; st.textContent = `Sincronizado agora · ${data.entries.length} lançamentos`; }
+      if (first) cloudAgain = true; // agora envia o que este celular já tinha
+      result = { ok: true, received: changed, sent: changes.length };
+      if (manual && !first) toast(changed || changes.length ? `Sincronizado: ${changes.length} enviado${changes.length === 1 ? "" : "s"}, ${changed} recebido${changed === 1 ? "" : "s"}` : "Tudo sincronizado");
+    } finally {
+      cloudBusy = false;
+      if (cloudAgain) { cloudAgain = false; setTimeout(() => cloudSync(manual), 50); }
+    }
+    return result;
+  }
+  async function cloudEnter(action, email, password, name, url) {
+    const c = cloudCfg();
+    c.url = url || c.url; c.devName = name;
+    const r = await postJson(cloudUrl(), { action, email, password, dev: c.dev, device: name });
+    if (!(r.json && r.json.ok)) return r.json && r.json.error ? r.json.error : lafErrorText(r);
+    Object.assign(c, { on: true, token: r.json.token, email: r.json.email, cursor: 0, sent: {}, lastError: "" });
+    cloudAdoptWallets();
+    if (!data.profile.email) data.profile.email = r.json.email;
+    persistOnly();
+    await cloudSync();
+    return "";
+  }
+  async function cloudLeave() {
+    const c = cloudCfg();
+    if (c.token) postJson(cloudUrl(), { action: "logout", token: c.token });
+    Object.assign(c, { on: false, token: "", cursor: 0, sent: {}, devices: [], lastError: "" });
+    save(); renderView(); toast("Este celular saiu do perfil online. Os dados continuam aqui.");
+  }
+  async function cloudRename(name) {
+    const c = cloudCfg(), old = devName();
+    c.devName = name;
+    for (const w of wallets()) if (w.dev === c.dev && w.name.endsWith(" · " + old)) w.name = w.name.slice(0, -old.length) + name;
+    save();
+    const r = await postJson(cloudUrl(), { action: "rename", token: c.token, device: name });
+    if (r.json && r.json.ok) c.devices = r.json.devices;
+    persistOnly(); renderView(); toast("Nome do celular guardado");
+  }
+  window.__cadernetaCloudSync = (m) => cloudSync(m);
 
   // ================= Layouts (Aparência) =================
   const THEMES = {
@@ -1626,6 +1816,56 @@
       el("button", { type: "button", class: "btn primary", text: "Guardar perfil", onclick: saveProfile })
     ], !pr.name));
 
+    // Perfil online: o mesmo perfil em vários celulares
+    const cc = data.cloud;
+    const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 2 ? "agora" : m < 60 ? `há ${m} min` : m < 1440 ? `há ${Math.round(m / 60)} h` : new Date(t).toLocaleDateString("pt-PT"); };
+    const cloudParts = [];
+    const cStatus = el("p", { class: cc.lastError ? "err" : "muted", id: "cloudStatus", text: cc.lastError || "" });
+    if (!cloudOn()) {
+      const devIn = el("input", { id: "cloudDev", value: cc.devName || "", maxlength: 30, placeholder: "Ex.: Celular 1 (M-Pesa)" });
+      const urlIn = el("input", { id: "cloudUrl", value: cc.url || "", placeholder: "cotacoes.lafwoodworking.com", autocomplete: "off", inputmode: "url" });
+      const mailIn = el("input", { id: "cloudMail", type: "email", value: cc.email || data.profile.email || "", maxlength: 120, placeholder: "nome@exemplo.com", autocomplete: "email" });
+      const passIn = el("input", { id: "cloudPass", type: "password", maxlength: 100, placeholder: "Pelo menos 6 caracteres", autocomplete: "current-password" });
+      const go = async (action) => {
+        const name = devIn.value.trim(), email = mailIn.value.trim(), pass = passIn.value;
+        if (!name) { cStatus.className = "err"; cStatus.textContent = "Dê um nome a este celular, por exemplo Celular 1."; return; }
+        if (!/^\S+@\S+\.\S+$/.test(email)) { cStatus.className = "err"; cStatus.textContent = "Escreva o seu e-mail."; return; }
+        if (pass.length < 6) { cStatus.className = "err"; cStatus.textContent = "A palavra-passe precisa de pelo menos 6 caracteres."; return; }
+        cStatus.className = "muted"; cStatus.textContent = action === "register" ? "A criar o perfil…" : "A entrar…";
+        const err = await cloudEnter(action, email, pass, name, urlIn.value.trim());
+        if (err) { cStatus.className = "err"; cStatus.textContent = err; return; }
+        openSec.nuvem = true; renderView();
+        toast(action === "register" ? "Perfil criado. Entre com o mesmo e-mail nos outros celulares." : "Celular ligado ao perfil. Os dados estão a ser juntados.");
+      };
+      cloudParts.push(
+        el("p", { class: "muted", text: "Use o mesmo perfil nos celulares que tem (ex.: um com M-Pesa, outro com e-Mola) e veja os gastos de todos juntos. Cada celular lê as suas SMS e as carteiras ficam com o nome do celular. Os dados ficam no seu servidor LAF, separados das Finanças da empresa." }),
+        el("label", { class: "field" }, el("span", { text: "Nome deste celular" }), devIn),
+        el("label", { class: "field" }, el("span", { text: "E-mail" }), mailIn),
+        el("label", { class: "field" }, el("span", { text: "Palavra-passe do perfil" }), passIn),
+        el("details", { class: "mini" }, el("summary", { text: "Servidor" }), el("label", { class: "field" }, el("span", { text: "Endereço do servidor" }), urlIn)),
+        el("div", { class: "btnrow" },
+          el("button", { type: "button", class: "btn primary", id: "cloudRegister", text: "Criar perfil", onclick: () => go("register") }),
+          el("button", { type: "button", class: "btn", id: "cloudLogin", text: "Entrar", onclick: () => go("login") })),
+        el("p", { class: "muted", text: "Primeiro celular: Criar perfil. Nos outros: Entrar com o mesmo e-mail e palavra-passe." }),
+        cStatus);
+    } else {
+      const renIn = el("input", { id: "cloudRename", value: cc.devName || "", maxlength: 30, "aria-label": "Nome deste celular" });
+      const devs = (cc.devices || []).map((d) => el("div", { class: "dev-row" },
+        el("span", { class: "icon-pick" }, svg("phone")),
+        el("span", { class: "dev-name" }, el("b", { text: d.name + (d.dev === cc.dev ? " (este)" : "") }), el("span", { class: "muted", text: d.dev === cc.dev ? "aberto agora" : "última ligação " + ago(d.seen) }))));
+      if (!cc.lastError) cStatus.textContent = cc.lastSync ? `Sincronizado ${ago(cc.lastSync)} · ${data.entries.length} lançamentos` : "A sincronizar…";
+      cloudParts.push(
+        el("p", { class: "muted" }, "Perfil ", el("b", { text: cc.email }), `. Os lançamentos de todos os celulares aparecem em Resumo, Histórico e Carteira.`),
+        el("h3", { class: "panel-title", text: `Celulares neste perfil (${(cc.devices || []).length})` }),
+        el("div", { class: "stack", id: "cloudDevices" }, ...devs),
+        el("div", { class: "setrow" }, renIn, el("button", { type: "button", class: "btn small", text: "Mudar nome", onclick: () => { const v = renIn.value.trim(); if (v && v !== cc.devName) cloudRename(v); } })),
+        cStatus,
+        el("div", { class: "btnrow" },
+          el("button", { type: "button", class: "btn small primary", id: "cloudSyncNow", text: "Sincronizar agora", onclick: async () => { cStatus.className = "muted"; cStatus.textContent = "A sincronizar…"; await cloudSync(true); } }),
+          el("button", { type: "button", class: "btn small danger-outline", text: "Sair neste celular", onclick: cloudLeave })));
+    }
+    body.append(fold("nuvem", "Vários celulares", cloudOn() ? `${(cc.devices || []).length || 1} celular${(cc.devices || []).length > 1 ? "es" : ""} · ${devName()}` : "desligado", cloudParts));
+
     // Modo de uso: individual (nada sai do telemóvel) ou empresarial (tipos do LAF e envio para o LAF financeiro)
     const lc = data.settings.laf;
     const modeParts = [el("div", { class: "theme-list" }, ...[
@@ -1848,7 +2088,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "2.1.0";
+  const APP_VERSION = "2.2.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if (!$("lock").hidden) return false;
@@ -1892,6 +2132,10 @@
   });
   pullSms();
   setTimeout(() => lafSync(), 4000);
+  setTimeout(() => cloudSync(), 1500);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) cloudSchedule(300); });
+  // com a Caderneta aberta, vai buscar os gastos dos outros celulares a cada 45 s
+  setInterval(() => { if (!document.hidden && cloudOn()) cloudSync(); }, 45000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) lafSchedule(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) pullSms(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden && today() !== lastDay) { lastDay = today(); viewMonth = monthOf(lastDay); $("date").value = lastDay; renderView(); } });

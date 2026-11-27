@@ -267,7 +267,7 @@ class MainActivity : Activity() {
                     c.outputStream.use { it.write(corpo.toByteArray(Charsets.UTF_8)) }
                     estado = c.responseCode
                     val s = if (estado in 200..299) c.inputStream else (c.errorStream ?: c.inputStream)
-                    texto = s.bufferedReader(Charsets.UTF_8).use { it.readText() }.take(200_000)
+                    texto = s.bufferedReader(Charsets.UTF_8).use { it.readText() }.take(20_000_000)
                     c.disconnect()
                 } catch (e: Exception) {
                     estado = 0

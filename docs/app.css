@@ -721,3 +721,9 @@ html[data-tema="escuro"] select option { background: #1e1e1e; color: #e8e8e8; }
 /* Modo empresarial: grupos de despesa do LAF por cima dos tipos */
 .chips.scroll.group-chips { margin: -2px -2px 12px; }
 .mode-opt .icon-pick { flex: none; }
+
+/* Vários celulares */
+.dev-row { display: flex; align-items: center; gap: 12px; }
+.dev-name { display: flex; flex-direction: column; min-width: 0; }
+.dev-name .muted { font-size: 13px; }
+details.mini > summary { cursor: pointer; color: var(--muted, #6b7390); font-size: 14px; margin: 2px 0 6px; }
