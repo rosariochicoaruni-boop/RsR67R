@@ -717,3 +717,7 @@ html[data-tema="escuro"] .toast { background: #e8e8e8; color: #121212; }
 html[data-tema="escuro"] .toast button { background: #121212; color: #e8e8e8; }
 html[data-tema="escuro"] dialog { border: 1px solid var(--line); }
 html[data-tema="escuro"] select option { background: #1e1e1e; color: #e8e8e8; }
+
+/* Modo empresarial: grupos de despesa do LAF por cima dos tipos */
+.chips.scroll.group-chips { margin: -2px -2px 12px; }
+.mode-opt .icon-pick { flex: none; }

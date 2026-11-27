@@ -61,6 +61,44 @@
     ["dinheiro", "Dinheiro", "cash", true], ["mpesa", "M-Pesa", "phone", true], ["emola", "e-Mola", "phone", true],
     ["mkesh", "mKesh", "phone", false], ["banco", "Banco", "bank", false]
   ];
+  // Modo empresarial: os tipos de despesa e de receita são os do LAF financeiro
+  const LAF_GROUPS = {
+    OPERATING: { name: "Despesas gerais", color: "#5b9dff" },
+    PRODUCTION: { name: "Produção", color: "#ff9f5a" },
+    SALARY: { name: "Salários", color: "#4fd1a1" },
+    TAX: { name: "Impostos", color: "#ff6b8b" },
+    INVESTMENT: { name: "Investimentos", color: "#a58bff" }
+  };
+  const LAF_DEFAULT_TYPES = {
+    OPERATING: ["Renda", "Energia", "Água", "Internet e telefone", "Combustível", "Manutenção de máquinas", "Material de escritório", "Limpeza e segurança", "Outras despesas"],
+    PRODUCTION: ["Mão de obra", "Transporte", "Serviço externo", "Compra directa de material", "Outros"],
+    SALARY: ["Salário", "Adiantamento"],
+    TAX: ["IVA", "IRPC / ISPC", "INSS", "Licenças e taxas municipais"],
+    INVESTMENT: ["Máquinas e equipamentos", "Ferramentas", "Viatura", "Obras na oficina", "Mobiliário e informática", "Outros investimentos"],
+    INCOME: ["Venda de sobras / serradura", "Serviço avulso", "Capital dos sócios", "Empréstimo", "Outras receitas"]
+  };
+  const LAF_ICONS = [[/renda|obras|mobili|limpeza/i, "casa"], [/energia|água|agua/i, "energ"], [/internet|telefone/i, "cred"], [/combust|transporte|viatura/i, "transp"],
+    [/salário|adiantamento|mão de obra/i, "salario"], [/iva|irpc|inss|licen|taxa/i, "bank"], [/material|compra/i, "merc"], [/máquina|ferramenta|manuten|serviço externo/i, "doc"],
+    [/venda|serviço/i, "negocio"], [/capital|empréstimo/i, "coin"]];
+  const lafIcon = (name, group) => { const f = LAF_ICONS.find(([re]) => re.test(name)); return f ? f[1] : group === "INCOME" ? "outent" : "outros"; };
+  const isLafCat = (id) => typeof id === "string" && id.startsWith("laf:");
+  // Cria (ou atualiza) as categorias do modo empresarial a partir dos tipos do LAF, sem perder cores, ícones e limites
+  function buildLafCats(d, types) {
+    types = types || {};
+    const prev = d.lafCats || { out: [], in: [] };
+    const old = {}; for (const t of ["out", "in"]) for (const c of prev[t] || []) old[c.id] = c;
+    const used = new Set(d.entries.map((e) => e.cat));
+    const names = (g) => { const l = Array.isArray(types[g]) && types[g].length ? types[g] : LAF_DEFAULT_TYPES[g]; return [...new Set(l.map((x) => String(x).trim()).filter((x) => x && x !== "Material do armazém"))]; };
+    const make = (g, name) => {
+      const id = `laf:${g}:${name}`, o = old[id];
+      return { id, name, group: g, color: o ? o.color : (g === "INCOME" ? "#5fe3a1" : LAF_GROUPS[g].color), icon: o ? o.icon : lafIcon(name, g), limit: o ? o.limit || 0 : 0 };
+    };
+    const out = []; for (const g of Object.keys(LAF_GROUPS)) for (const n of names(g)) out.push(make(g, n));
+    const inc = names("INCOME").map((n) => make("INCOME", n));
+    // um tipo que deixou de existir no LAF mas tem lançamentos fica guardado (escondido)
+    for (const [t, list] of [["out", out], ["in", inc]]) for (const c of prev[t] || []) if (!list.some((x) => x.id === c.id) && used.has(c.id)) list.push({ ...c, off: true });
+    d.lafCats = { out, in: inc };
+  }
   const OLD_COLORS = { alim: "#d9752a", merc: "#2f9568", transp: "#7259c4", casa: "#4874a6", energ: "#b8941c", cred: "#2f93aa", saude: "#c9404f", famil: "#a85f22", lazer: "#984a8c", outros: "#7d8a85", salario: "#187a49", negocio: "#36985f", outent: "#5fae82" };
 
   function freshData() {
@@ -88,6 +126,8 @@
     if (!s.sms) s.sms = { on: false };
     if (!s.laf) s.laf = { on: false, url: "cotacoes.lafwoodworking.com", key: "", lastSync: 0, lastError: "", sent: 0 };
     if (!d.lafSent) d.lafSent = {};
+    if (!s.mode) s.mode = s.laf.on ? "empresa" : "individual";
+    if (!d.lafCats) buildLafCats(d, null);
     if (!d.profile) d.profile = { name: "", phone: "", email: "", photo: "" };
     // 1.4.0: levantamentos lidos das SMS passam a ficar "por dividir" (uma vez)
     if (!s.splitMigrated) {
@@ -184,8 +224,18 @@
     return Math.round(v * 100);
   }
 
-  const catList = (type) => data.cats[type];
-  const catById = (type, id) => (catList(type) || []).find((c) => c.id === id) || { id, name: "Sem categoria", color: "#9aa6c8", icon: "tag" };
+  const empresa = () => data.settings.mode === "empresa";
+  // categorias em uso: as pessoais (modo individual) ou os tipos do LAF (modo empresarial)
+  const catList = (type) => empresa() ? data.lafCats[type].filter((c) => !c.off) : data.cats[type];
+  const catById = (type, id) => (data.cats[type] || []).find((c) => c.id === id) || (data.lafCats[type] || []).find((c) => c.id === id) || { id, name: "Sem categoria", color: "#9aa6c8", icon: "tag" };
+  const catLabel = (c) => c.group && LAF_GROUPS[c.group] ? `${c.name} (${LAF_GROUPS[c.group].name})` : c.name;
+  // categoria para o que não se sabe (SMS sem regra, depósitos, taxas)
+  function defaultCat(t) {
+    if (!empresa()) return t === "in" ? "outent" : "outros";
+    const l = catList(t), want = t === "in" ? "Outras receitas" : "Outras despesas";
+    const c = l.find((x) => x.name === want) || l.find((x) => x.group === "OPERATING") || l[0];
+    return c ? c.id : (t === "in" ? "outent" : "outros");
+  }
   const sum = (list) => list.reduce((a, e) => a + e.v, 0);
   const inMonth = (m) => data.entries.filter((e) => monthOf(e.d) === m);
   const wallets = () => data.settings.wallets;
@@ -408,10 +458,19 @@
   }
 
   function ensureLevantCat() {
-    if (!catList("out").some((c) => c.id === "levant")) catList("out").push({ id: "levant", name: "Levantamentos", color: "#7fd8c0", icon: "cash" });
+    if (!data.cats.out.some((c) => c.id === "levant")) data.cats.out.push({ id: "levant", name: "Levantamentos", color: "#7fd8c0", icon: "cash" });
   }
   function ensureTaxasCat() {
-    if (!catList("out").some((c) => c.id === "taxas")) catList("out").push({ id: "taxas", name: "Taxas", color: "#c08bff", icon: "bank" });
+    if (!data.cats.out.some((c) => c.id === "taxas")) data.cats.out.push({ id: "taxas", name: "Taxas", color: "#c08bff", icon: "bank" });
+    return "taxas";
+  }
+  // regra aprendida/conhecida -> categoria válida no modo atual
+  const KNOWN_LAF = { cred: "Internet e telefone", energ: "Energia" };
+  function ruleCat(rule, t) {
+    if (!rule) return null;
+    if (catList(t).some((c) => c.id === rule)) return rule;
+    const c = empresa() && KNOWN_LAF[rule] && catList(t).find((x) => x.name === KNOWN_LAF[rule]);
+    return c ? c.id : null;
   }
   function balanceAt(id, ts) {
     let b = walletById(id).adj || 0;
@@ -444,15 +503,15 @@
     }
     if (p.kind === "bal") { /* só acerto de saldo */ }
     else if (p.kind === "deposit") {
-      data.entries.push({ id: uid(), t: "in", v: p.amount, cat: "outent", note: "Depósito no agente", ...base }); n++;
+      data.entries.push({ id: uid(), t: "in", v: p.amount, cat: defaultCat("in"), note: "Depósito no agente", ...base }); n++;
     }
     else if (p.kind === "withdraw") {
       ensureLevantCat();
       data.entries.push({ id: uid(), t: "out", v: p.amount, cat: "levant", note: "Levantamento no agente", review: true, ...base }); n++;
     } else {
       const t = p.kind;
-      const cat = rule && catList(t).some((c) => c.id === rule) ? rule : (t === "in" ? "outent" : "outros");
-      const entry = { id: uid(), t, v: p.amount, cat, note, party: p.party, review: !rule, ...base };
+      const known = ruleCat(rule, t);
+      const entry = { id: uid(), t, v: p.amount, cat: known || defaultCat(t), note, party: p.party, review: !known, ...base };
       if (normParty(p.party) === "edm" && data.credelecPending) {
         const i = data.credelecPending.findIndex((c) => Math.abs(c.ts - p.ts) < 6 * 3600e3 && (!c.amount || c.amount === p.amount));
         if (i >= 0) { const c = data.credelecPending.splice(i, 1)[0]; entry.token = c.token; entry.note = `EDM · recarga ${c.token}${c.kwh ? ` (${c.kwh} kWh)` : ""}`; }
@@ -460,8 +519,8 @@
       data.entries.push(entry); n++;
     }
     if (p.fee > 0) {
-      ensureTaxasCat();
-      data.entries.push({ id: uid(), t: "out", v: p.fee, cat: "taxas", note: `Taxa ${WALLET_LABEL[p.wallet] || ""}`.trim(), ...base, ts: p.ts + 1 }); n++;
+      const feeCat = empresa() ? defaultCat("out") : ensureTaxasCat();
+      data.entries.push({ id: uid(), t: "out", v: p.fee, cat: feeCat, note: `Taxa ${WALLET_LABEL[p.wallet] || ""}`.trim(), ...base, ts: p.ts + 1 }); n++;
     }
     if (p.bal != null) {
       w.adj = (w.adj || 0) + (p.bal - balanceAt(p.wallet, p.ts + 1));
@@ -555,33 +614,37 @@
   function clearPin() { localStorage.removeItem(PIN_KEY); protectScreen(false); }
   async function checkPin(pin) { const r = pinRec(); return !!r && (await hashPin(pin, r.salt)) === r.hash; }
   // ================= Integração com o LAF financeiro =================
-  // Cada gasto e cada entrada da Caderneta é enviado para o servidor do LAF (api.php, acção "sync")
-  // como registo "expenses" ou "payments", com o tipo "Pessoal – categoria".
-  // Transferências entre carteiras próprias e metas não são enviadas.
+  // Modo empresarial: cada gasto e cada entrada lançados num tipo do LAF são enviados para o servidor
+  // (api.php, acção "sync") como registo "expenses" ou "payments", com source "caderneta".
+  // Modo individual: nada é enviado. Transferências, metas, categorias pessoais e movimentos
+  // das SMS ainda por categorizar nunca são enviados.
   const LAF_BASE = 8000000000000000; // ids da Caderneta no LAF (não colidem com os do LAF)
   function lafId(entryId) {
     let h1 = 0x811c9dc5, h2 = 0;
     for (const ch of String(entryId)) { h1 = Math.imul(h1 ^ ch.charCodeAt(0), 16777619) >>> 0; h2 = (h2 * 31 + ch.charCodeAt(0)) % 256; }
     return LAF_BASE + h1 * 256 + h2;
   }
-  const lafSyncable = (e) => e.t === "out" || e.t === "in";
+  const lafSyncable = (e) => (e.t === "out" || e.t === "in") && isLafCat(e.cat) && !e.review;
   function lafEntryDate(e) {
     if (e.ts && isoOf(new Date(e.ts)) === e.d) return e.ts;
     const [y, m, d] = e.d.split("-").map(Number); return new Date(y, m - 1, d, 12, 0).getTime();
   }
   function lafRecord(e, at) {
-    const c = catById(e.t, e.cat), w = walletById(e.w).name;
-    const note = [e.note && e.note !== c.name ? e.note : "", `Caderneta · ${w}`].filter(Boolean).join(" · ");
+    const [, group, ...rest] = e.cat.split(":"), type = rest.join(":"), w = walletById(e.w).name;
+    const note = [e.note && e.note !== type ? e.note : "", `Caderneta · ${w}`].filter(Boolean).join(" · ");
     const id = lafId(e.id);
-    if (e.t === "out") return { kind: "expenses", id, updatedAt: at, deleted: false, data: {
-      id, date: lafEntryDate(e), quoteId: 0, type: `Pessoal – ${c.name}`, description: note, value: e.v / 100, paid: true,
-      material: "", materialQty: 0, document: "", updatedAt: at, group: "OPERATING", person: "", period: "", dueDate: 0 } };
+    if (e.t === "out") {
+      const g = LAF_GROUPS[group] ? group : "OPERATING", salary = g === "SALARY";
+      return { kind: "expenses", id, updatedAt: at, deleted: false, data: {
+        id, date: lafEntryDate(e), quoteId: 0, type, description: note, value: e.v / 100, paid: true,
+        material: "", materialQty: 0, document: "", updatedAt: at, group: g, person: salary ? (e.note || "") : "", period: salary ? monthOf(e.d) : "", dueDate: 0, source: "caderneta" } };
+    }
     return { kind: "payments", id, updatedAt: at, deleted: false, data: {
-      id, date: lafEntryDate(e), quoteId: 0, value: e.v / 100, method: w, note, updatedAt: at, category: `Pessoal – ${c.name}`, receipt: "" } };
+      id, date: lafEntryDate(e), quoteId: 0, value: e.v / 100, method: w, note, updatedAt: at, category: type, receipt: "", source: "caderneta" } };
   }
-  const lafHash = (r) => { const d = r.data; return [r.kind, d.date, d.value, d.type || d.category, d.description || d.note, d.method || ""].join("|"); };
+  const lafHash = (r) => { const d = r.data; return [r.kind, d.date, d.value, d.type || d.category, d.group || "", d.description || d.note, d.method || "", d.source].join("|"); };
   const lafCfg = () => data.settings.laf;
-  const lafReady = () => !!(android && android.lafPedido && lafCfg().on && lafCfg().url && lafCfg().key);
+  const lafReady = () => !!(android && android.lafPedido && empresa() && lafCfg().url && lafCfg().key);
   const lafUrl = () => "https://" + lafCfg().url.replace(/^https?:\/\//i, "").replace(/\/+$/, "") + (/\.php$/i.test(lafCfg().url) ? "" : "/api.php");
 
   // Pedido ao servidor feito pelo APK (sem limites de CORS); a resposta volta por __lafResposta
@@ -598,7 +661,20 @@
 
   async function lafTest() {
     const r = await lafPost({ action: "ping", key: lafCfg().key });
-    return r.json && r.json.ok ? { ok: true } : { ok: false, error: lafErrorText(r) };
+    if (!(r.json && r.json.ok)) return { ok: false, error: lafErrorText(r) };
+    await lafRefreshTypes();
+    return { ok: true };
+  }
+  // Vai buscar os tipos de despesa e de receita definidos no LAF (acção "tipos").
+  // Servidor antigo sem esta acção: ficam os tipos de origem do LAF.
+  async function lafRefreshTypes() {
+    const r = await lafPost({ action: "tipos", key: lafCfg().key });
+    if (!(r.json && r.json.ok && r.json.tipos)) return false;
+    buildLafCats(data, r.json.tipos);
+    lafCfg().typesAt = Date.now();
+    persistOnly();
+    if (view === "lancar" || view === "ajustes") renderView();
+    return true;
   }
 
   let lafBusy = false, lafTimer = null;
@@ -607,6 +683,7 @@
     if (!lafReady() || lafBusy) return null;
     lafBusy = true;
     try {
+      if (!lafCfg().typesAt || Date.now() - lafCfg().typesAt > 12 * 3600e3) await lafRefreshTypes();
       const sent = data.lafSent, now = Date.now();
       const pending = [], present = new Set();
       for (const e of data.entries) {
@@ -790,7 +867,7 @@
   }
 
   // ================= Lançar =================
-  const launch = { type: "out", expr: "", w: "dinheiro" };
+  const launch = { type: "out", expr: "", w: "dinheiro", group: "OPERATING" };
   function termsOf(expr) { return expr.split("+").filter((s) => s !== ""); }
   function termCents(t) { const v = parseMoney(t.endsWith(",") ? t.slice(0, -1) : t); return v || 0; }
   function exprTotal() { return termsOf(launch.expr).reduce((a, t) => a + termCents(t), 0); }
@@ -852,7 +929,16 @@
       el("span", { class: "link", text: "Ver" })));
 
     const grid = $("catGrid"); grid.replaceChildren();
-    const cats = catList(launch.type);
+    let cats = catList(launch.type);
+    const gc = $("groupChips"); gc.replaceChildren();
+    $("catTitle").textContent = empresa() ? (launch.type === "out" ? "Tipos de despesa (LAF)" : "Tipos de receita (LAF)") : "Categorias";
+    gc.hidden = !(empresa() && launch.type === "out");
+    if (!gc.hidden) {
+      const groups = Object.keys(LAF_GROUPS).filter((g) => cats.some((c) => c.group === g));
+      if (!groups.includes(launch.group)) launch.group = groups[0];
+      for (const g of groups) gc.append(el("button", { type: "button", class: "chip", "aria-pressed": String(launch.group === g), onclick: () => { launch.group = g; renderLaunch(); } }, LAF_GROUPS[g].name));
+      cats = cats.filter((c) => c.group === launch.group);
+    }
     grid.classList.toggle("few", cats.length <= 6);
     for (const c of cats) grid.append(el("button", { type: "button", class: "action", style: colorVars(c.color), onclick: () => commit(c) }, svg(c.icon), el("span", { text: c.name })));
 
@@ -930,8 +1016,8 @@
   }
   function editFixed(f) {
     const isNew = !f;
-    f = f || { t: "out", name: "", v: 0, cat: "casa", w: "dinheiro", day: 1 };
-    const catOpts = (t) => catList(t).map((c) => [c.id, c.name]);
+    f = f || { t: "out", name: "", v: 0, cat: empresa() ? defaultCat("out") : "casa", w: "dinheiro", day: 1 };
+    const catOpts = (t) => { const l = catList(t).map((c) => [c.id, catLabel(c)]); if (t === f.t && !l.some(([id]) => id === f.cat)) l.unshift([f.cat, catLabel(catById(t, f.cat))]); return l; };
     openForm({
       title: isNew ? "Novo pagamento fixo" : "Pagamento fixo",
       intro: "Todos os meses, a partir do dia indicado, a Caderneta pede-lhe para confirmar este valor.",
@@ -1394,7 +1480,7 @@
     };
     const addRow = (catId, val) => {
       const sel = el("select", { "aria-label": "Categoria" });
-      for (const c of cats) sel.append(el("option", { value: c.id, text: c.name }));
+      for (const c of cats) sel.append(el("option", { value: c.id, text: catLabel(c) }));
       if (catId && cats.some((c) => c.id === catId)) sel.value = catId;
       const inp = el("input", { inputmode: "decimal", autocomplete: "off", placeholder: "0", "aria-label": "Valor (MT)" });
       if (val) inp.value = fmtPlain(val);
@@ -1405,7 +1491,7 @@
       rows.append(row);
       return inp;
     };
-    addRow("transp"); addRow("alim");
+    if (empresa()) addRow(); else { addRow("transp"); addRow("alim"); }
     const actions = el("div", { class: "split-actions" },
       el("button", { type: "button", class: "btn small", text: "+ Outra categoria", onclick: () => { addRow(cats[0] && cats[0].id).focus(); update(); } }),
       el("button", { type: "button", class: "btn small", text: "Pôr o resto na última", onclick: () => {
@@ -1452,8 +1538,8 @@
       });
       return;
     }
-    const cats = catList(e.t).map((c) => [c.id, c.name]);
-    if (!cats.some(([id]) => id === e.cat)) cats.push([e.cat, "Sem categoria"]);
+    const cats = catList(e.t).map((c) => [c.id, catLabel(c)]);
+    if (!cats.some(([id]) => id === e.cat)) cats.unshift([e.cat, catLabel(catById(e.t, e.cat))]);
     openForm({
       title: e.t === "out" ? "Editar gasto" : "Editar entrada",
       extra: e.t === "out" && e.v > 1 ? { label: "Dividir", onClick: () => openSplit(e) } : null,
@@ -1499,6 +1585,20 @@
     if (view === "ajustes" || view === "resumo") renderView();
   };
 
+  // ================= Modo de uso =================
+  function setMode(m) {
+    if (data.settings.mode === m) return;
+    data.settings.mode = m;
+    data.settings.laf.on = m === "empresa";
+    launch.group = "OPERATING";
+    openSec.modo = true;
+    save(); renderView();
+    if (m === "empresa") {
+      toast(lafCfg().key ? "Modo empresarial: lançamentos nos tipos do LAF são enviados" : "Modo empresarial: ligue ao LAF com a chave de acesso");
+      if (lafReady()) lafSync();
+    } else toast("Modo individual: nada é enviado para fora do telemóvel");
+  }
+
   // ================= Ajustes =================
   let installEvt = null;
   window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; if (view === "ajustes") renderAjustes(); });
@@ -1526,6 +1626,44 @@
       el("button", { type: "button", class: "btn primary", text: "Guardar perfil", onclick: saveProfile })
     ], !pr.name));
 
+    // Modo de uso: individual (nada sai do telemóvel) ou empresarial (tipos do LAF e envio para o LAF financeiro)
+    const lc = data.settings.laf;
+    const modeParts = [el("div", { class: "theme-list" }, ...[
+      ["individual", "Individual", "Para as suas contas. Categorias pessoais e nada é enviado para fora do telemóvel."],
+      ["empresa", "Empresarial (LAF)", "Usa os tipos de despesa e receita do LAF financeiro e envia os lançamentos para as Finanças do LAF."]
+    ].map(([id, name, desc]) => el("button", { type: "button", class: "theme-opt mode-opt", "data-mode": id, "aria-pressed": String(data.settings.mode === id), onclick: () => setMode(id) },
+      el("span", { class: "icon-pick" }, svg(id === "empresa" ? "negocio" : "user")),
+      el("span", { class: "theme-txt" }, el("b", { text: name }), el("span", { text: desc })),
+      el("span", { class: "theme-check", text: data.settings.mode === id ? "✓" : "" }))))];
+    if (empresa()) {
+      if (android && android.lafPedido) {
+        const urlIn = el("input", { id: "lafUrl", value: lc.url || "", placeholder: "cotacoes.lafwoodworking.com", autocomplete: "off", inputmode: "url" });
+        const keyIn = el("input", { id: "lafKey", type: "password", value: lc.key || "", placeholder: "A chave de acesso (API_KEY)", autocomplete: "off" });
+        const status = el("p", { class: "muted", id: "lafStatus" });
+        const showStatus = () => {
+          status.textContent = !lc.key ? "Escreva a chave de acesso e toque em Ligar ao LAF." : lc.lastError ? `Último erro: ${lc.lastError}` : lc.lastSync ? `Última sincronização: ${dayName(isoOf(new Date(lc.lastSync)))} ${timeOf(lc.lastSync)} · ${lc.sent || 0} lançamentos no LAF` : "Ainda não sincronizado.";
+          status.className = lc.lastError ? "err" : "muted";
+        };
+        showStatus();
+        const saveCfg = () => { lc.url = urlIn.value.trim(); lc.key = keyIn.value.trim(); persistOnly(); };
+        modeParts.push(
+          el("p", { class: "muted", text: "Os gastos e entradas lançados nos tipos do LAF vão para as Finanças do LAF (separador Caderneta). Edições e apagados também. Transferências, metas e movimentos das SMS por categorizar não são enviados." }),
+          el("label", { class: "field" }, el("span", { text: "Endereço do servidor" }), urlIn),
+          el("label", { class: "field" }, el("span", { text: "Chave de acesso (a mesma do app LAF)" }), keyIn),
+          el("div", { class: "btnrow" },
+            el("button", { type: "button", class: "btn small primary", id: "lafConnect", text: lc.lastSync ? "Testar ligação" : "Ligar ao LAF", onclick: async () => {
+              saveCfg(); if (!lc.key) { showStatus(); return; }
+              status.textContent = "A ligar…"; status.className = "muted";
+              const r = await lafTest();
+              if (!r.ok) { lc.lastError = r.error; persistOnly(); status.textContent = r.error; status.className = "err"; return; }
+              lc.lastError = ""; toast("Ligação ao LAF a funcionar. Tipos atualizados."); await lafSync(true); renderView();
+            } }),
+            lc.key ? el("button", { type: "button", class: "btn small", text: "Enviar agora", onclick: async () => { saveCfg(); status.textContent = "A enviar…"; await lafSync(true); showStatus(); } }) : null),
+          status);
+      } else modeParts.push(el("p", { class: "muted", text: "Os tipos do LAF já aparecem em Lançar. O envio para o LAF funciona no app instalado (APK) para Android." }));
+    }
+    body.append(fold("modo", "Modo de uso", empresa() ? (lc.lastError ? "Empresarial · erro" : lc.lastSync ? "Empresarial · ligado" : "Empresarial") : "Individual", modeParts, empresa() && !lc.lastSync));
+
     // Aparência: escolher um dos três layouts
     const curT = THEMES[data.settings.theme] ? data.settings.theme : "marinho";
     body.append(fold("aparencia", "Aparência", THEMES[curT].name, [
@@ -1536,33 +1674,6 @@
           el("span", { class: "theme-txt" }, el("b", { text: t.name }), el("span", { text: t.desc })),
           el("span", { class: "theme-check", text: id === curT ? "✓" : "" }))))
     ]));
-
-    // LAF financeiro
-    const lc = data.settings.laf;
-    const lafParts = [];
-    if (android && android.lafPedido) {
-      const on = el("input", { type: "checkbox", id: "lafOn", "aria-label": "Enviar para o LAF financeiro" }); on.checked = !!lc.on;
-      const urlIn = el("input", { id: "lafUrl", value: lc.url || "", placeholder: "cotacoes.lafwoodworking.com", autocomplete: "off", inputmode: "url" });
-      const keyIn = el("input", { id: "lafKey", type: "password", value: lc.key || "", placeholder: "A chave de acesso (API_KEY)", autocomplete: "off" });
-      const status = el("p", { class: "muted" });
-      const showStatus = () => {
-        status.textContent = lc.lastError ? `Último erro: ${lc.lastError}` : lc.lastSync ? `Última sincronização: ${dayName(isoOf(new Date(lc.lastSync)))} ${timeOf(lc.lastSync)} · ${lc.sent || 0} lançamentos no LAF` : "Ainda não sincronizado.";
-        status.className = lc.lastError ? "err" : "muted";
-      };
-      showStatus();
-      const saveCfg = () => { lc.url = urlIn.value.trim(); lc.key = keyIn.value.trim(); };
-      on.onchange = () => { saveCfg(); lc.on = on.checked; save(); if (on.checked) lafSync(true); renderView(); };
-      lafParts.push(
-        el("p", { class: "muted", text: "Cada gasto e cada entrada da Caderneta é registado nas Finanças do LAF, com o tipo \"Pessoal – categoria\". Edições e apagados também são enviados. Transferências entre carteiras e metas não são enviadas." }),
-        el("label", { class: "field" }, el("span", { text: "Endereço do servidor" }), urlIn),
-        el("label", { class: "field" }, el("span", { text: "Chave de acesso (a mesma do app LAF)" }), keyIn),
-        el("label", { class: "switch" }, el("span", { text: "Enviar para o LAF financeiro" }), on),
-        el("div", { class: "btnrow" },
-          el("button", { type: "button", class: "btn small", text: "Testar ligação", onclick: async () => { saveCfg(); persistOnly(); status.textContent = "A testar…"; status.className = "muted"; const r = await lafTest(); if (r.ok) { lc.lastError = ""; status.textContent = "Ligação ao LAF a funcionar."; status.className = "muted"; toast("Ligação ao LAF a funcionar"); } else { status.textContent = r.error; status.className = "err"; } } }),
-          lc.on ? el("button", { type: "button", class: "btn small primary", text: "Enviar agora", onclick: async () => { saveCfg(); persistOnly(); status.textContent = "A enviar…"; await lafSync(true); showStatus(); } }) : null),
-        status);
-    } else lafParts.push(el("p", { class: "muted", text: "Disponível no app instalado (APK) para Android." }));
-    body.append(fold("laf", "LAF financeiro", lc.on ? (lc.lastError ? "erro" : "ligado") : "desligado", lafParts));
 
     // Código de acesso
     const hasPin = !!pinRec();
@@ -1636,7 +1747,7 @@
       wPanel.append(el("div", { class: "setrow switch" }, el("span", { class: "icon-pick" }, svg(w.icon)), name, sw));
     }
     body.append(fold("carteiras", "Carteiras", usedWallets().map((w) => w.name).join(", "), wParts));
-    body.append(fold("categorias", "Categorias e limites", `${catList("out").length + catList("in").length} categorias`, [catEditor("out"), catEditor("in")]));
+    body.append(fold("categorias", empresa() ? "Tipos e limites" : "Categorias e limites", `${catList("out").length + catList("in").length} ${empresa() ? "tipos do LAF" : "categorias"}`, [catEditor("out"), catEditor("in")]));
 
     // Cópia
     const last = data.settings.lastBackup;
@@ -1654,13 +1765,15 @@
   }
 
   function catEditor(t) {
-    const panel = el("div", { class: "stack" }, el("h3", { class: "panel-title", text: t === "out" ? "Gastos" : "Entradas" }),
-      el("p", { class: "muted", text: t === "out" ? "Toque no ícone para o trocar. Defina um limite por mês para receber um aviso aos 80% e ao passar." : "Toque no ícone para o trocar." }));
+    const lafMode = empresa();
+    const panel = el("div", { class: "stack" }, el("h3", { class: "panel-title", text: t === "out" ? (lafMode ? "Tipos de despesa" : "Gastos") : (lafMode ? "Tipos de receita" : "Entradas") }),
+      el("p", { class: "muted", text: (lafMode ? "Os nomes vêm do LAF financeiro (mude-os lá, em Definições). " : "") + (t === "out" ? "Toque no ícone para o trocar. Defina um limite por mês para receber um aviso aos 80% e ao passar." : "Toque no ícone para o trocar.") }));
     const used = new Set(data.entries.filter((e) => e.t === t).map((e) => e.cat));
     for (const c of catList(t)) {
       const icon = el("button", { type: "button", class: "icon-pick", "aria-label": "Trocar ícone de " + c.name }, svg(c.icon));
       icon.onclick = () => { const i = CAT_ICON_CHOICES.indexOf(c.icon); c.icon = CAT_ICON_CHOICES[(i + 1) % CAT_ICON_CHOICES.length]; save(); icon.replaceChildren(svg(c.icon)); };
-      const name = el("input", { value: c.name, maxlength: 24, "aria-label": "Nome da categoria" });
+      const name = el("input", { value: lafMode ? catLabel(c) : c.name, maxlength: 24, "aria-label": "Nome da categoria" });
+      if (lafMode) name.readOnly = true;
       name.addEventListener("change", () => { const v = name.value.trim(); if (v) { c.name = v; save(); toast("Categoria renomeada"); } else name.value = c.name; });
       const color = el("input", { type: "color", value: c.color, "aria-label": "Cor de " + c.name });
       color.addEventListener("change", () => { c.color = color.value; save(); });
@@ -1671,7 +1784,7 @@
         if (!armed) { armed = true; del.textContent = used.has(c.id) ? "Remover? Lançamentos ficam sem categoria" : "Remover?"; del.className = "btn small danger"; return; }
         data.cats[t] = catList(t).filter((x) => x.id !== c.id); save(); renderAjustes();
       };
-      panel.append(el("div", { class: "setrow" }, icon, name, color, del));
+      panel.append(el("div", { class: "setrow" }, icon, name, color, lafMode ? null : del));
       if (t === "out") {
         const lim = el("input", { inputmode: "decimal", autocomplete: "off", placeholder: "sem limite", value: c.limit ? fmtPlain(c.limit) : "", "aria-label": "Limite mensal de " + c.name });
         lim.addEventListener("change", () => {
@@ -1682,7 +1795,7 @@
         panel.append(el("div", { class: "setrow-sub" }, el("span", { text: "Limite/mês" }), lim));
       }
     }
-    panel.append(el("button", { type: "button", class: "btn", text: "+ Nova categoria", onclick: () => {
+    if (!lafMode) panel.append(el("button", { type: "button", class: "btn", text: "+ Nova categoria", onclick: () => {
       const palette = ["#ff9f5a", "#4fd1a1", "#a58bff", "#5b9dff", "#ffd25a", "#4cc9f0", "#ff6b8b", "#f6a6ff", "#7ee0ff"];
       catList(t).push({ id: uid(), name: "Nova categoria", color: palette[catList(t).length % palette.length], icon: "tag" }); save(); renderAjustes();
       const input = [...document.querySelectorAll("#ajustesBody input:not([type])")].find((i) => i.value === "Nova categoria");
@@ -1735,7 +1848,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "2.0.0";
+  const APP_VERSION = "2.1.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if (!$("lock").hidden) return false;
@@ -1762,10 +1875,15 @@
     data.profile.asked = true; save();
     openForm({
       title: "Bem-vindo à Caderneta",
-      intro: "Como se chama? O nome aparece na saudação. Em Ajustes pode pôr foto e criar um código de acesso.",
-      fields: [{ id: "name", label: "Nome", type: "text", placeholder: "O seu nome", maxlength: 40 }],
+      intro: "Como se chama? O nome aparece na saudação. Em Ajustes pode pôr foto, criar um código de acesso e mudar o modo de uso.",
+      fields: [{ id: "name", label: "Nome", type: "text", placeholder: "O seu nome", maxlength: 40 },
+        { id: "mode", label: "Como vai usar a Caderneta", type: "select", value: data.settings.mode, options: [["individual", "Individual (só para mim, nada é enviado)"], ["empresa", "Empresarial (enviar para o LAF financeiro)"]] }],
       submit: "Começar",
-      onSubmit: (v) => { data.profile.name = v.name.trim(); save(); renderView(); }
+      onSubmit: (v) => {
+        data.profile.name = v.name.trim(); save();
+        if (v.mode && v.mode !== data.settings.mode) { setMode(v.mode); if (v.mode === "empresa") location.hash = "#ajustes"; }
+        renderView();
+      }
     });
   }
   document.addEventListener("visibilitychange", () => {
