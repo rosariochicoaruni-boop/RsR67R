@@ -245,6 +245,40 @@ class MainActivity : Activity() {
             }
         }
 
+        /**
+         * Envia um pedido JSON ao servidor do LAF financeiro (api.php). Só https.
+         * A resposta volta ao JavaScript por window.__lafResposta(id, estado, texto).
+         */
+        @JavascriptInterface
+        fun lafPedido(url: String, corpo: String, id: String) {
+            Thread {
+                var estado = 0
+                var texto = ""
+                try {
+                    val u = java.net.URL(url)
+                    if (u.protocol != "https") throw IllegalArgumentException("Só https")
+                    val c = u.openConnection() as java.net.HttpURLConnection
+                    c.requestMethod = "POST"
+                    c.connectTimeout = 15000
+                    c.readTimeout = 25000
+                    c.doOutput = true
+                    c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    c.setRequestProperty("Accept", "application/json")
+                    c.outputStream.use { it.write(corpo.toByteArray(Charsets.UTF_8)) }
+                    estado = c.responseCode
+                    val s = if (estado in 200..299) c.inputStream else (c.errorStream ?: c.inputStream)
+                    texto = s.bufferedReader(Charsets.UTF_8).use { it.readText() }.take(200_000)
+                    c.disconnect()
+                } catch (e: Exception) {
+                    estado = 0
+                    texto = ""
+                }
+                val js = "window.__lafResposta && window.__lafResposta(" + org.json.JSONObject.quote(id) + "," + estado + "," +
+                    org.json.JSONObject.quote(texto) + ")"
+                runOnUiThread { if (::web.isInitialized) web.evaluateJavascript(js, null) }
+            }.start()
+        }
+
         /** Com código ativo: esconde o conteúdo na lista de apps recentes e impede capturas de ecrã. */
         @JavascriptInterface
         fun proteger(on: Boolean) {

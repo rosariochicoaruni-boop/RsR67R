@@ -86,6 +86,8 @@
     if (!Array.isArray(d.smsSeen)) d.smsSeen = [];
     if (!d.smsRules) d.smsRules = {};
     if (!s.sms) s.sms = { on: false };
+    if (!s.laf) s.laf = { on: false, url: "cotacoes.lafwoodworking.com", key: "", lastSync: 0, lastError: "", sent: 0 };
+    if (!d.lafSent) d.lafSent = {};
     if (!d.profile) d.profile = { name: "", phone: "", email: "", photo: "" };
     // 1.4.0: levantamentos lidos das SMS passam a ficar "por dividir" (uma vez)
     if (!s.splitMigrated) {
@@ -118,6 +120,7 @@
     catch (e) { toast("Não foi possível guardar. O armazenamento do telemóvel pode estar cheio."); }
     if (!persistAsked && navigator.storage && navigator.storage.persist) { persistAsked = true; navigator.storage.persist().catch(() => {}); }
     tellAndroidLastEntry();
+    if (typeof lafSchedule === "function") lafSchedule();
   }
 
   // ================= Utilidades =================
@@ -551,6 +554,95 @@
   }
   function clearPin() { localStorage.removeItem(PIN_KEY); protectScreen(false); }
   async function checkPin(pin) { const r = pinRec(); return !!r && (await hashPin(pin, r.salt)) === r.hash; }
+  // ================= Integração com o LAF financeiro =================
+  // Cada gasto e cada entrada da Caderneta é enviado para o servidor do LAF (api.php, acção "sync")
+  // como registo "expenses" ou "payments", com o tipo "Pessoal – categoria".
+  // Transferências entre carteiras próprias e metas não são enviadas.
+  const LAF_BASE = 8000000000000000; // ids da Caderneta no LAF (não colidem com os do LAF)
+  function lafId(entryId) {
+    let h1 = 0x811c9dc5, h2 = 0;
+    for (const ch of String(entryId)) { h1 = Math.imul(h1 ^ ch.charCodeAt(0), 16777619) >>> 0; h2 = (h2 * 31 + ch.charCodeAt(0)) % 256; }
+    return LAF_BASE + h1 * 256 + h2;
+  }
+  const lafSyncable = (e) => e.t === "out" || e.t === "in";
+  function lafEntryDate(e) {
+    if (e.ts && isoOf(new Date(e.ts)) === e.d) return e.ts;
+    const [y, m, d] = e.d.split("-").map(Number); return new Date(y, m - 1, d, 12, 0).getTime();
+  }
+  function lafRecord(e, at) {
+    const c = catById(e.t, e.cat), w = walletById(e.w).name;
+    const note = [e.note && e.note !== c.name ? e.note : "", `Caderneta · ${w}`].filter(Boolean).join(" · ");
+    const id = lafId(e.id);
+    if (e.t === "out") return { kind: "expenses", id, updatedAt: at, deleted: false, data: {
+      id, date: lafEntryDate(e), quoteId: 0, type: `Pessoal – ${c.name}`, description: note, value: e.v / 100, paid: true,
+      material: "", materialQty: 0, document: "", updatedAt: at, group: "OPERATING", person: "", period: "", dueDate: 0 } };
+    return { kind: "payments", id, updatedAt: at, deleted: false, data: {
+      id, date: lafEntryDate(e), quoteId: 0, value: e.v / 100, method: w, note, updatedAt: at, category: `Pessoal – ${c.name}`, receipt: "" } };
+  }
+  const lafHash = (r) => { const d = r.data; return [r.kind, d.date, d.value, d.type || d.category, d.description || d.note, d.method || ""].join("|"); };
+  const lafCfg = () => data.settings.laf;
+  const lafReady = () => !!(android && android.lafPedido && lafCfg().on && lafCfg().url && lafCfg().key);
+  const lafUrl = () => "https://" + lafCfg().url.replace(/^https?:\/\//i, "").replace(/\/+$/, "") + (/\.php$/i.test(lafCfg().url) ? "" : "/api.php");
+
+  // Pedido ao servidor feito pelo APK (sem limites de CORS); a resposta volta por __lafResposta
+  const lafWaiting = {};
+  window.__lafResposta = (id, status, text) => { const f = lafWaiting[id]; delete lafWaiting[id]; if (f) f(status, text); };
+  function lafPost(body) {
+    return new Promise((resolve) => {
+      const id = uid(); lafWaiting[id] = (status, text) => { let j = null; try { j = JSON.parse(text); } catch (e) { /* */ } resolve({ status, json: j, text }); };
+      try { android.lafPedido(lafUrl(), JSON.stringify(body), id); } catch (e) { delete lafWaiting[id]; resolve({ status: 0, json: null, text: String(e) }); }
+      setTimeout(() => { if (lafWaiting[id]) window.__lafResposta(id, 0, ""); }, 30000);
+    });
+  }
+  const lafErrorText = (r) => r.json && r.json.error ? r.json.error : r.status === 0 ? "Sem ligação ao servidor (verifique a internet e o endereço)." : `O servidor respondeu ${r.status}.`;
+
+  async function lafTest() {
+    const r = await lafPost({ action: "ping", key: lafCfg().key });
+    return r.json && r.json.ok ? { ok: true } : { ok: false, error: lafErrorText(r) };
+  }
+
+  let lafBusy = false, lafTimer = null;
+  function lafSchedule() { if (!lafReady()) return; clearTimeout(lafTimer); lafTimer = setTimeout(lafSync, 2500); }
+  async function lafSync(manual = false) {
+    if (!lafReady() || lafBusy) return null;
+    lafBusy = true;
+    try {
+      const sent = data.lafSent, now = Date.now();
+      const pending = [], present = new Set();
+      for (const e of data.entries) {
+        if (!lafSyncable(e)) continue;
+        present.add(e.id);
+        const prev = sent[e.id];
+        const rec = lafRecord(e, Math.max(now, prev ? prev.at + 1 : 0));
+        const h = lafHash(rec);
+        if (!prev || prev.h !== h) pending.push({ entryId: e.id, rec, h });
+      }
+      for (const [entryId, prev] of Object.entries(sent)) {
+        if (!present.has(entryId)) pending.push({ entryId, rec: { kind: prev.kind, id: prev.id, updatedAt: Math.max(now, prev.at + 1), deleted: true, data: null }, del: true });
+      }
+      let done = 0;
+      for (let i = 0; i < pending.length; i += 150) {
+        const batch = pending.slice(i, i + 150);
+        // since muito alto: o servidor não devolve os dados da empresa, só confirma
+        const r = await lafPost({ action: "sync", key: lafCfg().key, since: 9e15, quotes: [], records: batch.map((x) => x.rec) });
+        if (!(r.json && r.json.ok)) { lafCfg().lastError = lafErrorText(r); persistOnly(); if (manual) toast("LAF financeiro: " + lafCfg().lastError); return { ok: false, error: lafCfg().lastError }; }
+        for (const x of batch) {
+          if (x.del) delete sent[x.entryId];
+          else sent[x.entryId] = { id: x.rec.id, kind: x.rec.kind, at: x.rec.updatedAt, h: x.h };
+        }
+        done += batch.length;
+      }
+      lafCfg().lastSync = Date.now(); lafCfg().lastError = ""; lafCfg().sent = Object.keys(sent).length;
+      persistOnly();
+      if (manual) toast(done ? `LAF financeiro: ${done} registo${done > 1 ? "s" : ""} enviado${done > 1 ? "s" : ""}` : "LAF financeiro: tudo já estava enviado");
+      if (view === "ajustes") renderView();
+      return { ok: true, done };
+    } finally { lafBusy = false; }
+  }
+  // grava sem voltar a agendar envio
+  function persistOnly() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* */ } }
+  window.__cadernetaLafSync = (m) => lafSync(m);
+
   // ================= Layouts (Aparência) =================
   const THEMES = {
     marinho: { name: "Marinho", desc: "Cabeçalho escuro em onda, botão Lançar redondo ao centro", sw: ["#0d1033", "#e9eff9", "#ffffff"], darkIcons: false, bar: "#0d1033" },
@@ -1445,6 +1537,33 @@
           el("span", { class: "theme-check", text: id === curT ? "✓" : "" }))))
     ]));
 
+    // LAF financeiro
+    const lc = data.settings.laf;
+    const lafParts = [];
+    if (android && android.lafPedido) {
+      const on = el("input", { type: "checkbox", id: "lafOn", "aria-label": "Enviar para o LAF financeiro" }); on.checked = !!lc.on;
+      const urlIn = el("input", { id: "lafUrl", value: lc.url || "", placeholder: "cotacoes.lafwoodworking.com", autocomplete: "off", inputmode: "url" });
+      const keyIn = el("input", { id: "lafKey", type: "password", value: lc.key || "", placeholder: "A chave de acesso (API_KEY)", autocomplete: "off" });
+      const status = el("p", { class: "muted" });
+      const showStatus = () => {
+        status.textContent = lc.lastError ? `Último erro: ${lc.lastError}` : lc.lastSync ? `Última sincronização: ${dayName(isoOf(new Date(lc.lastSync)))} ${timeOf(lc.lastSync)} · ${lc.sent || 0} lançamentos no LAF` : "Ainda não sincronizado.";
+        status.className = lc.lastError ? "err" : "muted";
+      };
+      showStatus();
+      const saveCfg = () => { lc.url = urlIn.value.trim(); lc.key = keyIn.value.trim(); };
+      on.onchange = () => { saveCfg(); lc.on = on.checked; save(); if (on.checked) lafSync(true); renderView(); };
+      lafParts.push(
+        el("p", { class: "muted", text: "Cada gasto e cada entrada da Caderneta é registado nas Finanças do LAF, com o tipo \"Pessoal – categoria\". Edições e apagados também são enviados. Transferências entre carteiras e metas não são enviadas." }),
+        el("label", { class: "field" }, el("span", { text: "Endereço do servidor" }), urlIn),
+        el("label", { class: "field" }, el("span", { text: "Chave de acesso (a mesma do app LAF)" }), keyIn),
+        el("label", { class: "switch" }, el("span", { text: "Enviar para o LAF financeiro" }), on),
+        el("div", { class: "btnrow" },
+          el("button", { type: "button", class: "btn small", text: "Testar ligação", onclick: async () => { saveCfg(); persistOnly(); status.textContent = "A testar…"; status.className = "muted"; const r = await lafTest(); if (r.ok) { lc.lastError = ""; status.textContent = "Ligação ao LAF a funcionar."; status.className = "muted"; toast("Ligação ao LAF a funcionar"); } else { status.textContent = r.error; status.className = "err"; } } }),
+          lc.on ? el("button", { type: "button", class: "btn small primary", text: "Enviar agora", onclick: async () => { saveCfg(); persistOnly(); status.textContent = "A enviar…"; await lafSync(true); showStatus(); } }) : null),
+        status);
+    } else lafParts.push(el("p", { class: "muted", text: "Disponível no app instalado (APK) para Android." }));
+    body.append(fold("laf", "LAF financeiro", lc.on ? (lc.lastError ? "erro" : "ligado") : "desligado", lafParts));
+
     // Código de acesso
     const hasPin = !!pinRec();
     body.append(fold("codigo", "Código de acesso", hasPin ? "ativo" : "desligado", [
@@ -1616,7 +1735,7 @@
   }
 
   // ================= Arranque =================
-  const APP_VERSION = "1.9.0";
+  const APP_VERSION = "2.0.0";
   const IN_APK = /CadernetaApp/.test(navigator.userAgent);
   window.__cadernetaVoltar = () => {
     if (!$("lock").hidden) return false;
@@ -1654,6 +1773,8 @@
     if (pinRec() && unlocked && hiddenAt && Date.now() - hiddenAt > LOCK_AFTER) showLock();
   });
   pullSms();
+  setTimeout(() => lafSync(), 4000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) lafSchedule(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) pullSms(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden && today() !== lastDay) { lastDay = today(); viewMonth = monthOf(lastDay); $("date").value = lastDay; renderView(); } });
 
